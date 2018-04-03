@@ -200,7 +200,11 @@ class MainEngine(object):
             try:
                 # 设置MongoDB操作的超时时间为0.5秒
                 self.dbClient = MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'], connectTimeoutMS=500)
-                
+
+                # 配置用户名和密码
+                db = self.dbClient.admin
+                db.authenticate(globalSetting['mongoUser'], globalSetting['mongoPassword'])
+
                 # 调用server_info查询服务器状态，防止服务器异常并未连接成功
                 self.dbClient.server_info()
 
