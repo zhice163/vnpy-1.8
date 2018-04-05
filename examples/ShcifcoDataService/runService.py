@@ -5,6 +5,7 @@
 """
 
 from dataService import *
+from zcDataService import *
 
 
 if __name__ == '__main__':
@@ -20,7 +21,8 @@ if __name__ == '__main__':
         # 每天到达任务下载时间后，执行数据下载的操作
         if t.time() > taskTime and (taskCompletedDate is None or t.date() != taskCompletedDate):
             # 下载1000根分钟线数据，足以覆盖过去两天的行情
-            downloadAllMinuteBar(1000)
+            #downloadAllMinuteBar(1000)
+            downloadAllDayBar(60)
             
             # 更新任务完成的日期
             taskCompletedDate = t.date()
