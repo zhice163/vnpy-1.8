@@ -850,6 +850,11 @@ class CtpTdApi(TdApi):
         contract.strikePrice = data['StrikePrice']
         contract.productClass = productClassMapReverse.get(data['ProductClass'], PRODUCT_UNKNOWN)
         contract.expiryDate = data['ExpireDate']
+
+        # ADD BY ZHICE
+        contract.productID = data['ProductID']
+        contract.deliveryYear = data['DeliveryYear']
+        contract.openDate = data['OpenDate']
         
         # ETF期权的标的命名方式需要调整（ETF代码 + 到期月份）
         if contract.exchange in [EXCHANGE_SSE, EXCHANGE_SZSE]:

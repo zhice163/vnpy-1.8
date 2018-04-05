@@ -264,6 +264,12 @@ class VtContractData(VtBaseData):
         self.optionType = EMPTY_UNICODE         # 期权类型
         self.expiryDate = EMPTY_STRING          # 到期日
 
+        # ADD BY ZHICE 补充了必要信息
+        self.productID = EMPTY_STRING  # 产品代码 例如：rm
+        self.deliveryYear = EMPTY_STRING  # 交割年份
+        self.openDate = EMPTY_STRING  # 上市日
+        self.updateTime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))  # 当时的时间
+
 
 ########################################################################
 class VtSubscribeReq(object):

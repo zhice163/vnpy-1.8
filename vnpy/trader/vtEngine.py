@@ -18,7 +18,7 @@ from vnpy.trader.vtEvent import *
 from vnpy.trader.vtGateway import *
 from vnpy.trader.language import text
 from vnpy.trader.vtFunction import getTempPath
-
+from vnpy.trader.vtZcObject import mydb
 
 
 ########################################################################
@@ -436,9 +436,10 @@ class DataEngine(object):
         self.contractDict[contract.vtSymbol] = contract
         self.contractDict[contract.symbol] = contract       # 使用常规代码（不包括交易所）可能导致重复
 
-        # for test
-        print(contract.__dict__)
-    
+        # add by zhice 每次登录，将合约记录到数据库中
+        mydb.dbUpdate(MAIN_DB_NAME, TB_CONTRACT, contract.__dict__, {'vtSymbol': contract.vtSymbol}, True)
+
+
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
         """处理委托事件"""

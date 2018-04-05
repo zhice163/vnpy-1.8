@@ -108,3 +108,11 @@ GATEWAYTYPE_FUTURES = 'futures'                 # 期货、期权、贵金属
 GATEWAYTYPE_INTERNATIONAL = 'international'     # 外盘
 GATEWAYTYPE_BTC = 'btc'                         # 比特币
 GATEWAYTYPE_DATA = 'data'                       # 数据（非交易）
+
+
+# add by zhice
+# 数据库名
+MAIN_DB_NAME = 'VnTrader_Main_Db'
+
+# 表明
+TB_CONTRACT = 'contract'
