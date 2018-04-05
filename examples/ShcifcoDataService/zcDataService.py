@@ -23,6 +23,8 @@ SYMBOLS = setting['SYMBOLS']
 api = ShcifcoApi(SHCIFCO_IP, SHCIFCO_PORT, SHCIFCO_TOKEN)       # 历史行情服务API对象
 
 
+# 注意：中期的日线函数还是非正式函数
+
 # ----------------------------------------------------------------------
 def generateVtBar(d):
     """生成K线"""
