@@ -53,8 +53,6 @@ vn.trader/build/*
 vn.trader/dist/*
 *.bak
 
-CTP_connect.json
-VT_setting.json
+*.json
 
-config.json
 
