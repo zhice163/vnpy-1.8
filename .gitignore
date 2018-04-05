@@ -46,7 +46,7 @@ vn.ctp/build/*
 vn.lts/build/*
 .idea
 .vscode
-.gitignore
+#.gitignore
 
 vn.trader/ctaAlgo/data/*
 vn.trader/build/*
@@ -55,4 +55,5 @@ vn.trader/dist/*
 
 CTP_connect.json
 VT_setting.json
+config.json
 
