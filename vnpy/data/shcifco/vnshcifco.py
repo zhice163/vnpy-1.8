@@ -2,6 +2,7 @@
 
 
 import requests
+import time
 
 HTTP_OK = 200
 
@@ -144,5 +145,51 @@ class ShcifcoApi(object):
             }
             barList.append(d)
             
+        return barList
+
+    # ----------------------------------------------------------------------
+    def getHisDayBar(self, symbol, num, date='', period=''):
+        """获取历史K线数据"""
+        path = 'hisdaybar'
+
+        # 默认参数
+        params = {
+            'id': symbol,
+            'num': num
+        }
+        # 可选参数
+        if date:
+            params['tradingday'] = date
+        if period:
+            params['period'] = period
+
+        data = self.getData(path, params)
+        if not data:
+            return None
+
+        barList = []
+        l = data.split(';')
+
+        for barStr in l:
+            # 过滤某些空数据
+            if ',' not in barStr:
+                continue
+
+            barData = barStr.split(',')
+            d = {
+                'symbol': barData[0],
+                'tradingday': barData[1],  # trading day
+                'open': float(barData[2]),
+                'high': float(barData[3]),
+                'low': float(barData[4]),
+                'close': float(barData[5]),
+                'volume': int(barData[6]),
+                'openInterest': int(float(barData[7])),
+                'date': barData[1],  # tradingday day
+                'time': '0000',
+                'updateTime': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))  # 当时的时间
+            }
+            barList.append(d)
+
         return barList
 
