@@ -3,6 +3,7 @@
 import sys
 reload(sys)
 sys.setdefaultencoding('utf8')
+#sys.path.append("/srv/vnpy18")
 
 import multiprocessing
 from time import sleep
