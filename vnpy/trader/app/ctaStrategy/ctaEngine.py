@@ -95,7 +95,8 @@ class CtaEngine(object):
         req.currency = strategy.currency        
         
         # 设计为CTA引擎发出的委托只允许使用限价单
-        req.priceType = PRICETYPE_LIMITPRICE    
+        #req.priceType = PRICETYPE_LIMITPRICE
+        req.priceType = strategy.priceType
         
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
