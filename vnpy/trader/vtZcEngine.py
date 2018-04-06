@@ -12,6 +12,8 @@ from vnpy.trader.vtObject import VtSingleton
 
 from datetime import datetime
 from vnpy.trader.vtConstant import  *
+from vnpy.trader.vtObject import VtTickData, VtBarData
+from pymongo import  ASCENDING, DESCENDING
 
 
 ########################################################################
@@ -160,3 +162,48 @@ class DbEngine(object):
             collection.replace_one(flt, d, upsert)
         else:
             self.writeLog(text.DATA_UPDATE_FAILED)
+
+
+# cat 策略的数据库封装
+class ctaDbEngine(object):
+
+    def __init__(self, dbEngine):
+        self.dbEngine = dbEngine
+
+
+    def getDominantByProductID(self, productID):
+        # 根据合约名称获取主力合约
+        ret = self.dbEngine.dbQuery(MAIN_DB_NAME, TB_DOMINANT, {'productID': productID}, ret={"vtSymbol": 1})
+        if ret.count() == 1:
+            return ret[0]['vtSymbol']
+        else:
+            return None
+
+            # 获取所有合约信息 add by zhice
+
+    def getAllContract(self):
+        # 查询合约表中所有的合约信息
+        ret_contract = self.dbEngine.dbQuery(MAIN_DB_NAME, TB_CONTRACT, {})
+        ret = {}
+        for contract in ret_contract:
+            ret[contract["symbol"]] = contract
+        return ret
+
+
+    def loadDayBar(self, vtSymbol, days):
+        # 读取指定合约指定天数的日线信息
+        ret_bar = self.dbEngine.dbQuery(ZQ_DAILY_DB_NAME, vtSymbol, {}, sortKey='date', sortDirection=DESCENDING, limit=days)
+
+        if ret_bar:
+            ret_bar = list(ret_bar)
+            ret_bar.reverse()
+
+            l = []
+            for d in ret_bar:
+                bar = VtBarData()
+                bar.__dict__ = d
+                l.append(bar)
+            return l
+
+        else:
+            return []
