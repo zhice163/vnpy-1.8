@@ -116,6 +116,9 @@ MAIN_DB_NAME = 'VnTrader_Main_Db'
 
 # 表明
 TB_CONTRACT = 'contract'
+TB_CONTRACT_HIS= 'contract_his'
+TB_DOMINANT = 'dominant'
+TB_DOMINANT_HIS = 'dominant_his'
 
 # 中期上下载的数据
 ZQ_DAILY_DB_NAME = 'ZQ_Daily_Db'
