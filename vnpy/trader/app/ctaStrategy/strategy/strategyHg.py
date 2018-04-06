@@ -5,31 +5,19 @@
 """
 
 from __future__ import division
-from datetime import  datetime
-import uuid
 
-from vnpy.trader.vtZcObject import mydb
-from vnpy.trader.vtZcEngine import ctaDbEngine
+from datetime import datetime
 
-from vnpy.trader.vtConstant import EMPTY_STRING, EMPTY_FLOAT
-from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate, 
+from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
                                                      BarGenerator,
                                                      ArrayManager)
-from vnpy.trader.app.ctaStrategy.ctaBase import *
-
-
-from vnpy.trader.vtObject import VtTickData, VtBarData
-from vnpy.event import EventEngine2
-
-from pymongo import  ASCENDING, DESCENDING
-from vnpy.trader.vtConstant import (EMPTY_INT, EMPTY_FLOAT,
-                                    EMPTY_STRING, EMPTY_UNICODE,
-                                    DIRECTION_LONG, DIRECTION_SHORT,
-                                    STATUS_ALLTRADED, STATUS_CANCELLED, STATUS_REJECTED,
+from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
                                     STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN,
                                     PRICETYPE_MARKETPRICE)
+from vnpy.trader.vtZcEngine import ctaDbEngine
+from vnpy.trader.vtZcObject import mydb
 
-
+BREAK_MIDDLEWINDOW = '20日突破'
 
 
 ########################################################################
@@ -91,7 +79,7 @@ class HgStrategy(CtaTemplate):
         self.s_or_b = ''  # 买卖方向
         self.offsetProfit = ''  # 平仓盈亏
         self.floatProfit = ''  # 浮动盈亏
-        self.max_cell_num = 0  # 最大持仓量
+        self.max_cell_num = 3  # 最大持仓量
 
 
         # 海龟交易主力合约，配置时 symbol 配置的是品种名称，进行翻译。
@@ -148,6 +136,7 @@ class HgStrategy(CtaTemplate):
         self.sessionID = gateway.tdApi.sessionID  # 本地交易
         self.frontID = gateway.tdApi.frontID  # 本次交易的
 
+        # TODO 每次重新登录如果有历史报单，对历史报单的处理
         #gateway.tdApi.qryTest()
 
         
@@ -181,60 +170,50 @@ class HgStrategy(CtaTemplate):
         if not self.am.inited:
             self.writeCtaLog(u'【ERROR】【hg】合约未能正常初始化' % (vtSymbol))
             return
+
+        # 账户金额有限，如果加仓单位还不到1，则直接返回
+        if self.monitor['unit'] == 0:
+            return
+
         # TODO 撤销所有的合约
 
         # TODO 如果未持有合约，判断是否有突破
-        if vtSymbol not in self.hgPosition:
+        if self.cell_num == 0:
             isBreak = False
             if bar.close > self.monitor['middleWindowHighBreak']:
-                # 有突破
-                pass
-            if bar.close < self.monitor['middleWindowLowBreak']:
-                # 有突破
-                pass
+                # 有向上突破
+                isBreak = True
+                self.s_or_b = 'b'
+                a_cell = HgCell(self, vtSymbol, self.s_or_b, self.monitor['unit'],
+                                self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW)
+                self.addCell(a_cell)
 
-        # TODO 如果持有合约，判断是否 触及止损
+            elif bar.close < self.monitor['middleWindowLowBreak']:
+                # 有向下突破
+                isBreak = True
+                self.s_or_b = 's'
+                a_cell = HgCell(self, vtSymbol, self.s_or_b, self.monitor['unit'],
+                                self.monitor['middleWindowLowBreak'], BREAK_MIDDLEWINDOW)
+                self.addCell(a_cell)
 
-        # TODO 如果持有合约，判断是否触及止盈
+        if self.cell_num == 0:
+            # 下面的操作只有有持仓时才操作
+            return
+        # TODO 如果持有合约，判断是否触及退出
+        # 10日线退出法则, 多头头寸，价格低于最近10日最低点时退出
+        if self.s_or_b == 'b' and bar.close < self.monitor['shortWindowLowBreak']:
+            self.quitAllOrders()
+        # 10日线退出法则, 空头头寸，价格高于最近10日最高点时退出
+        if self.s_or_b == 's' and bar.close > self.monitor['shortWindowHighBreak']:
+            self.quitAllOrders()
+
+
+        # TODO 如果持有合约，判断是否触及止损
 
 
         # TODO 如果持有合约，判断是否触及加仓，同时判断仓位是否超过限制
 
-        """
-        # 计算快慢均线
-        fastMa = am.sma(self.fastWindow, array=True)
-        self.fastMa0 = fastMa[-1]
-        self.fastMa1 = fastMa[-2]
-        
-        slowMa = am.sma(self.slowWindow, array=True)
-        self.slowMa0 = slowMa[-1]
-        self.slowMa1 = slowMa[-2]
 
-        # 判断买卖
-        crossOver = self.fastMa0>self.slowMa0 and self.fastMa1<self.slowMa1     # 金叉上穿
-        crossBelow = self.fastMa0<self.slowMa0 and self.fastMa1>self.slowMa1    # 死叉下穿
-        
-        # 金叉和死叉的条件是互斥
-        # 所有的委托均以K线收盘价委托（这里有一个实盘中无法成交的风险，考虑添加对模拟市价单类型的支持）
-        if crossOver:
-            # 如果金叉时手头没有持仓，则直接做多
-            if self.pos == 0:
-                self.buy(bar.close, 1)
-            # 如果有空头持仓，则先平空，再做多
-            elif self.pos < 0:
-                self.cover(bar.close, 1)
-                self.buy(bar.close, 1)
-        # 死叉和金叉相反
-        elif crossBelow:
-            if self.pos == 0:
-                self.short(bar.close, 1)
-            elif self.pos > 0:
-                self.sell(bar.close, 1)
-                self.short(bar.close, 1)
-                
-        # 发出状态更新事件
-        self.putEvent()
-        """
     #----------------------------------------------------------------------
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
@@ -268,6 +247,22 @@ class HgStrategy(CtaTemplate):
     def myPrint(self, funName, date):
         print("%s funName = %s ,  date = %s " % (datetime.now(), funName, date))
 
+
+    def addCell(self, cell):
+        # 增加一个持仓单位
+        if self.cell_num >= self.max_cell_num:
+            # 已达到最大持仓，直接返回
+            return
+        # TODO 判断同一策略实例的最大持仓条件，最多不能超过12 ，6 的限制
+
+        self.cell_num = self.cell_num + 1 # 持仓计数加1
+        self.hgCellList.append(cell) # 添加在持仓列表中
+
+
+    def quitAllOrders(self):
+        # 设定所有持仓的目标仓位为0
+        for cell in self.hgCellList:
+            cell.target_unit = 0
     # ----------------------------------------------------------------------
 
 
