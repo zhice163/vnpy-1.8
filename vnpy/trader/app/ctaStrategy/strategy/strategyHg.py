@@ -15,7 +15,7 @@ from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
                                     STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN,
                                     PRICETYPE_MARKETPRICE)
 from vnpy.trader.vtZcEngine import ctaDbEngine
-from vnpy.trader.vtZcObject import mydb
+from vnpy.trader.vtZcObject import mydb, Cell
 
 BREAK_MIDDLEWINDOW = '20日突破'
 
@@ -177,7 +177,7 @@ class HgStrategy(CtaTemplate):
 
         # TODO 撤销所有的合约
 
-        # TODO 如果未持有合约，判断是否有突破
+        # 如果未持有合约，判断是否有突破
         if self.cell_num == 0:
             isBreak = False
             if bar.close > self.monitor['middleWindowHighBreak']:
@@ -199,7 +199,7 @@ class HgStrategy(CtaTemplate):
         if self.cell_num == 0:
             # 下面的操作只有有持仓时才操作
             return
-        # TODO 如果持有合约，判断是否触及退出
+        # 如果持有合约，判断是否触及退出
         # 10日线退出法则, 多头头寸，价格低于最近10日最低点时退出
         if self.s_or_b == 'b' and bar.close < self.monitor['shortWindowLowBreak']:
             self.quitAllOrders()
@@ -209,6 +209,7 @@ class HgStrategy(CtaTemplate):
 
 
         # TODO 如果持有合约，判断是否触及止损
+
 
 
         # TODO 如果持有合约，判断是否触及加仓，同时判断仓位是否超过限制
@@ -277,95 +278,21 @@ class HgStrategy(CtaTemplate):
 
 #############################################################
 
-# 一个品种仓位的信息
-class HgCell:
+
+
+
+# 海龟类继承基本处理类，增加海龟法则比较的属性
+class HgCell(Cell):
 
     def __init__(self, strategy, vtSymbol, direction, target_unit, plan_in_price, in_condition):
+        """Constructor"""
+        super(HgCell, self).__init__(strategy, vtSymbol, direction, target_unit, plan_in_price, in_condition)
 
-        self.strategy = strategy  # 策略实例
-        self.vtSymbol = vtSymbol # 合约
-        self.open_direction = direction # 买卖方向
-        self.target_unit = target_unit  # 目标仓位
-        self.plan_in_price = plan_in_price  # 计划入场价格
-        self.in_condition = in_condition  # 入场条件 1:20日突破 2:55日突破 3:0.5N 4:移仓
+        self.plan_stop_price = None # 止损价格
+        self.plan_add_price = None  # 加仓价格
 
-        self.real_unit = 0  # 真实持仓单位
-        self.real_in_price = 0  # 平均入场价格
-        self.in_time = ''  # 入场时间
-
-        self.in_orderId_dict = {}  # 记录开仓的订单ID
-        self.in_trade_dict = {}  # 记录开仓的成交信息
-        self.out_orderId_dict = {}  # 记录平仓的订单ID
-        self.out_trade_dict = {}  # 记录平仓的成交信息
-
-
-        # self.add_price = 0 # 加仓价格
-        self.plan_out_price = 0  # 出场价格
-        self.real_out_price = 0  # 出场价格
-        self.out_time = 0  # 出场时间
-        self.out_condition = '' # 出厂条件
-
-
-    # 确认订单是否都已经是稳定订单
-    def is_all_order_stable(self):
-
-        ret = True
-        NOT_FINISHED_STATUS = [STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN]
-
-        # 检查开仓订单是否已全部成交
-        for orderid, order in self.in_orderId_dict.items():
-            if order.status in NOT_FINISHED_STATUS:
-                ret = False
-
-        # 检查平仓订单是否已全部成交
-        for orderid, order in self.out_orderId_dict.items():
-            if order.status in NOT_FINISHED_STATUS:
-                ret = False
-
-        return ret
-
-
-    def hand_cell(self, price):
-        # 查看订单是否都是稳定状态，如果不是稳定状态则直接返回
-        is_stable = self.is_all_order_stable()
-        if not is_stable:
-            return []
-        #TODO 如果是稳定状态，更新持仓信息
-
-        print('hand_cell')
-
-        orderIdList = []
-        in_or_out = ''
-        # 如果无订单或者所有订单都是稳定状态,根据目标仓位进行下单
-        # 买开中
-        if self.open_direction == DIRECTION_LONG and self.target_unit > self.real_unit:
-            orderIdList = self.strategy.buy(price, abs(self.target_unit - self.real_unit))
-            in_or_out = 'in'
-        # 卖平中
-        if self.open_direction == DIRECTION_LONG and self.target_unit < self.real_unit:
-            orderIdList = self.strategy.sell(price, abs(self.target_unit - self.real_unit))
-            in_or_out = 'out'
-        # 卖开中
-        if self.open_direction == DIRECTION_SHORT and self.target_unit > self.real_unit:
-            orderIdList = self.strategy.short(price, abs(self.target_unit - self.real_unit))
-            in_or_out = 'in'
-        # 买平中
-        if self.open_direction == DIRECTION_SHORT and self.target_unit < self.real_unit:
-            orderIdList = self.strategy.cover(price, abs(self.target_unit - self.real_unit))
-            in_or_out = 'out'
-        print("hand_cell sendorderover ")
-        for orderid in orderIdList:
-            if in_or_out == 'in':
-                self.in_orderId_dict[orderid] = None
-                self.in_trade_dict[orderid] = None
-            if in_or_out == 'out':
-                self.out_orderId_dict[orderid] = None
-                self.out_trade_dict[orderid] = None
-        print("save order")
-        return orderIdList
-
-
-
+#hg = HgCell('strategy', 'vtSymbol', 'direction', 'target_unit', 'plan_in_price', 'in_condition')
+#print(hg.__dict__)
 
 
 
