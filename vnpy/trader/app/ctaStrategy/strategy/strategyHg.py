@@ -18,6 +18,7 @@ from vnpy.trader.vtZcEngine import ctaDbEngine
 from vnpy.trader.vtZcObject import mydb, Cell
 
 BREAK_MIDDLEWINDOW = '20日突破'
+HALF_N = '0.5N'
 
 
 ########################################################################
@@ -161,6 +162,7 @@ class HgStrategy(CtaTemplate):
     #----------------------------------------------------------------------
     def onBar(self, bar):
         """收到Bar推送（必须由用户继承实现）"""
+        # TODO 对涨跌停的处理
         self.myPrint("onBar", bar.__dict__)
         #self.buy(3750, 1)
         return
@@ -208,12 +210,14 @@ class HgStrategy(CtaTemplate):
             self.quitAllOrders()
 
 
-        # TODO 如果持有合约，判断是否触及止损
+        # 如果持有合约，判断是否触及止损
+        # TODO 涨跌停的处理
+        self.check_stop_condition(bar.close)
 
+        # 如果持有合约，判断是否触及加仓，同时判断仓位是否超过限制
+        self.check_add_condition(bar.close)
 
-
-        # TODO 如果持有合约，判断是否触及加仓，同时判断仓位是否超过限制
-
+        #TODO 离场条件？
 
     #----------------------------------------------------------------------
     def onOrder(self, order):
@@ -243,14 +247,16 @@ class HgStrategy(CtaTemplate):
     def onStopOrder(self, so):
         """停止单推送"""
         self.myPrint("onStopOrder", so.__dict__)
-        pass    
+        pass
 
+    # ----------------------------------------------------------------------
     def myPrint(self, funName, date):
         print("%s funName = %s ,  date = %s " % (datetime.now(), funName, date))
 
-
+    # ----------------------------------------------------------------------
     def addCell(self, cell):
         # 增加一个持仓单位
+        # TODO 增加同一关联实例的最大仓位处理
         if self.cell_num >= self.max_cell_num:
             # 已达到最大持仓，直接返回
             return
@@ -259,11 +265,52 @@ class HgStrategy(CtaTemplate):
         self.cell_num = self.cell_num + 1 # 持仓计数加1
         self.hgCellList.append(cell) # 添加在持仓列表中
 
-
+    # ----------------------------------------------------------------------
     def quitAllOrders(self):
         # 设定所有持仓的目标仓位为0
         for cell in self.hgCellList:
             cell.target_unit = 0
+
+    def check_stop_condition(self, price):
+        """ 检验是否触发止损条件"""
+        if self.s_or_b == 'b':
+            # 多头持仓
+            for cell in self.hgCellList:
+                if price <= cell.plan_stop_price:
+                    # 当前价格小于等于止损价格时，设定目标仓位为0
+                    cell.target_unit = 0
+        if self.s_or_b == 's':
+            # 空头持仓
+            for cell in self.hgCellList:
+                if price >= cell.plan_stop_price:
+                    # 当前价格大于等于止损价格时，设定目标仓位为0
+                    cell.target_unit = 0
+
+    # ----------------------------------------------------------------------
+    def check_add_condition(self, price):
+        """检验是否触及加仓条件"""
+        if len(self.hgCellList) >= self.max_cell_num:
+            # 如果已达到最大仓位，直接返回
+            # TODO 增加关联策略实例的仓位控制
+            return
+
+        cell = self.hgCellList(len(self.hgCellList) - 1) # 取最后一个持仓
+        if self.s_or_b == 'b':
+            # 多头持仓，并且当前价格大约加仓价
+            if price >= cell.plan_add_price:
+                a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
+                                cell.plan_add_price, HALF_N)
+                self.addCell(a_cell)
+
+        if self.s_or_b == 's':
+            # 空头持仓，并且当前价格小于加仓价
+            if price <= cell.plan_add_price:
+                a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
+                                cell.plan_add_price, HALF_N)
+                self.addCell(a_cell)
+
+
+
     # ----------------------------------------------------------------------
 
 
