@@ -137,6 +137,8 @@ class HgStrategy(CtaTemplate):
         self.sessionID = gateway.tdApi.sessionID  # 本地交易
         self.frontID = gateway.tdApi.frontID  # 本次交易的
 
+        self.writeCtaLog(u'【INFO】初始化，sessionID = %s; frontID = %s' % (self.sessionID, self.frontID))
+
         # TODO 每次重新登录如果有历史报单，对历史报单的处理
         #gateway.tdApi.qryTest()
 
@@ -217,7 +219,7 @@ class HgStrategy(CtaTemplate):
         # 如果持有合约，判断是否触及加仓，同时判断仓位是否超过限制
         self.check_add_condition(bar.close)
 
-        #TODO 离场条件？
+        #TODO 增加离场条件的记录？
 
     #----------------------------------------------------------------------
     def onOrder(self, order):

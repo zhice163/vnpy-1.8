@@ -730,7 +730,12 @@ class CtpTdApi(TdApi):
         """持仓查询回报"""
         if not data['InstrumentID']:
             return
-        
+
+        # 为测试增加打印信息
+        print("*" * 20 + "    " + 'onRspQryInvestorPosition')
+        print(data)
+
+
         # 获取持仓缓存对象
         posName = '.'.join([data['InstrumentID'], data['PosiDirection']])
         if posName in self.posDict:
@@ -772,13 +777,19 @@ class CtpTdApi(TdApi):
             # 遍历推送
             for pos in self.posDict.values():
                 self.gateway.onPosition(pos)
-            
+                print("pos")
+                print(pos.__dict__)
             # 清空缓存
             self.posDict.clear()
         
     #----------------------------------------------------------------------
     def onRspQryTradingAccount(self, data, error, n, last):
         """资金账户查询回报"""
+
+        # 为测试增加打印信息
+        print("*" * 20 + "    " + 'onRspQryTradingAccount')
+        print(data)
+
         account = VtAccountData()
         account.gatewayName = self.gatewayName
     

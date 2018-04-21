@@ -292,6 +292,9 @@ class CtaEngine(object):
                     s.remove(vtOrderID)
             
             self.callStrategyFunc(strategy, strategy.onOrder, order)
+        else:
+            #TODO 没在监控中的订单的处理，可以转发给策略的 onSpOrder 函数
+            pass
     
     #----------------------------------------------------------------------
     def processTradeEvent(self, event):

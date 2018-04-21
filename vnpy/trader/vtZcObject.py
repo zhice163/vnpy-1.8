@@ -33,6 +33,8 @@ class Cell(object):
         self.out_orderId_dict = {}  # 记录平仓的订单ID
         self.out_trade_dict = {}  # 记录平仓的成交信息
 
+
+
     # 确认订单是否都已经是稳定订单
     def is_all_order_stable(self):
 
@@ -56,8 +58,10 @@ class Cell(object):
         is_stable = self.is_all_order_stable()
         if not is_stable:
             return []
-        # TODO 如果是稳定状态，更新持仓信息
 
+        # 如果目标仓位和真实仓位一致，则直接范围
+        if self.target_unit == self.real_unit:
+            return []
         print('hand_cell')
 
         orderIdList = []
@@ -81,6 +85,12 @@ class Cell(object):
             in_or_out = 'out'
         print("hand_cell sendorderover ")
         for orderid in orderIdList:
+
+            if self.strategy.sessionID is not None and self.strategy.frontID is not None:
+                # 如果策略维护了 sessionID 和 frontID ，则使用组合值作为唯一id
+                orderid = self.strategy.sessionID + '_' + self.strategy.frontID + '_' + orderid
+
+
             if in_or_out == 'in':
                 self.in_orderId_dict[orderid] = None
                 self.in_trade_dict[orderid] = None
