@@ -2,6 +2,8 @@
 
 """
 海龟交易法则
+1、最终的成交价在onTrade里面
+2、onOrder里面有sessionID 和 frontID，onTrade 里面没有
 """
 
 from __future__ import division
@@ -165,8 +167,26 @@ class HgStrategy(CtaTemplate):
     def onBar(self, bar):
         """收到Bar推送（必须由用户继承实现）"""
         # TODO 对涨跌停的处理
+        # TODO 异常值的处理
+        #strategy.trading = False
+        #strategy.inited = False
+
         self.myPrint("onBar", bar.__dict__)
         #self.buy(3750, 1)
+
+        #return
+        # 测试
+
+        self.s_or_b = 'b'
+        a_cell = HgCell(self, bar.vtSymbol, self.s_or_b, 1,
+                        self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW)
+        a_cell.target_unit = 1
+        a_cell.real_unit = 0
+        self.addCell(a_cell)
+
+        a_cell.hand_cell(3700)
+
+
         return
         vtSymbol = bar.vtSymbol
 
@@ -225,16 +245,27 @@ class HgStrategy(CtaTemplate):
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
         # 对于无需做细粒度委托控制的策略，可以忽略onOrder
-        print("onorder")
         self.myPrint("onOrder", str(order.__dict__).decode('unicode-escape'))
-        #TODO
+
 
         self.orderList.append(order)
 
-        # 更新 in_orderId_dict 中的订单信息
-        for hgcell in self.hgPosition:
-            pass
-        pass
+        # onOrder  -133888101.1.CTP.4
+        # 更新 cell 中 in_orderId_dict out_orderId_dict 中的订单信息
+
+        is_update = False
+        for hgcell in self.hgCellList:
+            is_update = (hgcell.updateOrder(order) or is_update)
+
+        if is_update:
+            self.myPrint("onOrder", 'order 更新成功')
+        else:
+            self.myPrint("onOrder", 'order 更新失败')
+
+
+
+        # TODO
+
     
     #----------------------------------------------------------------------
     def onTrade(self, trade):
@@ -243,7 +274,19 @@ class HgStrategy(CtaTemplate):
         # 打印过trader信息，里面没有session信息
         self.myPrint("onTrade", str(trade.__dict__).decode('unicode-escape'))
         self.tradeList.append(trade)
-        pass
+
+        # 把 Trade 更新到 cell 中
+        for hgcell in self.hgCellList:
+            is_update = (hgcell.updateTrade(trade) or is_update)
+
+        if is_update:
+            self.myPrint("onTrade", 'trade 更新成功')
+        else:
+            self.myPrint("onTrade", 'trade 更新失败')
+
+        # 接收到成交之后打印一下自己
+        for hgcell in self.hgCellList:
+            hgcell.print_self()
     
     #----------------------------------------------------------------------
     def onStopOrder(self, so):
@@ -253,7 +296,7 @@ class HgStrategy(CtaTemplate):
 
     # ----------------------------------------------------------------------
     def myPrint(self, funName, date):
-        print("%s funName = %s ,  date = %s " % (datetime.now(), funName, date))
+        print("%s strategyHg funName = %s ,  date = %s " % (datetime.now(), funName, date))
 
     # ----------------------------------------------------------------------
     def addCell(self, cell):
@@ -266,6 +309,7 @@ class HgStrategy(CtaTemplate):
 
         self.cell_num = self.cell_num + 1 # 持仓计数加1
         self.hgCellList.append(cell) # 添加在持仓列表中
+
 
     # ----------------------------------------------------------------------
     def quitAllOrders(self):

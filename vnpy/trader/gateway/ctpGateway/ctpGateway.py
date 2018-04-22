@@ -787,8 +787,8 @@ class CtpTdApi(TdApi):
         """资金账户查询回报"""
 
         # 为测试增加打印信息
-        print("*" * 20 + "    " + 'onRspQryTradingAccount')
-        print(data)
+        #print("*" * 20 + "    " + 'onRspQryTradingAccount')
+        #print(data)
 
         account = VtAccountData()
         account.gatewayName = self.gatewayName

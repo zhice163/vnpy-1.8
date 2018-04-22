@@ -114,7 +114,7 @@ class CtaEngine(object):
         elif orderType == CTAORDER_COVER:
             req.direction = DIRECTION_LONG
             req.offset = OFFSET_CLOSE
-            
+
         # 委托转换
         reqList = self.mainEngine.convertOrderReq(req)
         vtOrderIDList = []
@@ -293,7 +293,7 @@ class CtaEngine(object):
             
             self.callStrategyFunc(strategy, strategy.onOrder, order)
         else:
-            #TODO 没在监控中的订单的处理，可以转发给策略的 onSpOrder 函数
+            #TODO 对于异常单号的处理记录
             pass
     
     #----------------------------------------------------------------------
