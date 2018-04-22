@@ -165,6 +165,8 @@ class VtOrderData(VtBaseData):
         self.frontID = EMPTY_INT                # 前置机编号
         self.sessionID = EMPTY_INT              # 连接编号
 
+        self.updateTime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))  # 当时的时间
+
     
 ########################################################################
 class VtPositionData(VtBaseData):
