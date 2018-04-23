@@ -26,6 +26,7 @@ class Cell(object):
 
         self.real_unit = 0  # 真实持仓单位
         self.real_in_price = 0  # 平均入场价格
+        self.real_out_price = 0  # 平均出场价格
         self.fix_unit = 0 # 修正仓位，默认为0
 
         self.in_time = ''  # 入场时间
@@ -140,7 +141,43 @@ class Cell(object):
             self.out_trade_dict[orderid] = trade
             is_update = True
 
+        # 每次有成交时更新一下cell
+        self.update_real_unit_and_price()
+
         return is_update
+
+
+    def update_real_unit_and_price(self):
+
+        in_volume = 0
+        out_volume = 0
+        in_price = 0
+        out_price = 0
+
+
+        for id, trade in self.in_trade_dict.items():
+            in_volume = in_volume + trade.volume
+            in_price = in_price + trade.volume * trade.price
+
+        for id, trade in self.out_trade_dict.items():
+            out_volume = out_volume + trade.volume
+            out_price = out_price + trade.volume * trade.price
+
+        self.real_unit = in_volume - out_volume
+
+        if in_volume == 0:
+            self.real_in_price = 0
+        else:
+            self.real_in_price = in_price/in_volume
+
+        if out_volume == 0:
+            self.real_out_price = 0
+        else:
+            self.real_out_price = out_price/out_volume
+
+
+
+
 
     def print_self(self):
         print(" ****************** cell 详情开始 *******************")
