@@ -4,6 +4,9 @@
 海龟交易法则
 1、最终的成交价在onTrade里面
 2、onOrder里面有sessionID 和 frontID，onTrade 里面没有
+
+问题
+1、分批成交时，onOrder ontrade是怎么样的呢
 """
 
 from __future__ import division
@@ -78,6 +81,9 @@ class HgStrategy(CtaTemplate):
         self.productID = ''  # 品种
 
         self.hgCellList = []  # 持仓列表，元素为HgCell
+        self.plan_add_price = None  # 加仓价格
+        self.unit = None #
+
         self.cell_num = 0  # 持仓量
         self.s_or_b = ''  # 买卖方向
         self.offsetProfit = ''  # 平仓盈亏
@@ -179,7 +185,7 @@ class HgStrategy(CtaTemplate):
 
         self.s_or_b = 'b'
         a_cell = HgCell(self, bar.vtSymbol, self.s_or_b, 1,
-                        self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW)
+                        self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW, self.monitor['atr'])
         a_cell.target_unit = 1
         a_cell.real_unit = 0
         self.addCell(a_cell)
@@ -199,6 +205,12 @@ class HgStrategy(CtaTemplate):
         if self.monitor['unit'] == 0:
             return
 
+        # 当前持仓大于最大持仓要求
+        if self.cell_num >= self.max_cell_num:
+            return
+
+        # TODO 当前持仓是否满足 6 12 规则
+
         # TODO 撤销所有的合约
 
         # 如果未持有合约，判断是否有突破
@@ -209,7 +221,7 @@ class HgStrategy(CtaTemplate):
                 isBreak = True
                 self.s_or_b = 'b'
                 a_cell = HgCell(self, vtSymbol, self.s_or_b, self.monitor['unit'],
-                                self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW)
+                                self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW, self.monitor['atr'])
                 self.addCell(a_cell)
 
             elif bar.close < self.monitor['middleWindowLowBreak']:
@@ -217,12 +229,15 @@ class HgStrategy(CtaTemplate):
                 isBreak = True
                 self.s_or_b = 's'
                 a_cell = HgCell(self, vtSymbol, self.s_or_b, self.monitor['unit'],
-                                self.monitor['middleWindowLowBreak'], BREAK_MIDDLEWINDOW)
+                                self.monitor['middleWindowLowBreak'], BREAK_MIDDLEWINDOW, self.monitor['atr'])
                 self.addCell(a_cell)
 
         if self.cell_num == 0:
             # 下面的操作只有有持仓时才操作
             return
+
+        # TODO 判断订单稳定后再继续操作
+        # TODO 判断是否达到目标持仓再操作
         # 如果持有合约，判断是否触及退出
         # 10日线退出法则, 多头头寸，价格低于最近10日最低点时退出
         if self.s_or_b == 'b' and bar.close < self.monitor['shortWindowLowBreak']:
@@ -234,6 +249,7 @@ class HgStrategy(CtaTemplate):
 
         # 如果持有合约，判断是否触及止损
         # TODO 涨跌停的处理
+
         self.check_stop_condition(bar.close)
 
         # 如果持有合约，判断是否触及加仓，同时判断仓位是否超过限制
@@ -283,6 +299,19 @@ class HgStrategy(CtaTemplate):
             self.myPrint("onTrade", 'trade 更新成功')
         else:
             self.myPrint("onTrade", 'trade 更新失败')
+
+        # 更新加仓价格
+        if is_update and self.cell_num >= 1 :
+            cell = self.hgCellList[self.cell_num - 1]  # 取最后一个持仓
+            if cell.is_all_order_stable() and cell.real_unit == cell.target_unit:
+                # 订单都稳定了，并且达到了目标持仓，更新加仓价格
+                if cell.open_direction == 'b':
+                    self.plan_add_price = cell.real_in_price + (cell.N/2)
+                if cell.open_direction == 's':
+                    self.plan_add_price = cell.real_in_price - (cell.N/2)
+
+
+
 
         # 接收到成交之后打印一下自己
         for hgcell in self.hgCellList:
@@ -343,16 +372,16 @@ class HgStrategy(CtaTemplate):
         cell = self.hgCellList(len(self.hgCellList) - 1) # 取最后一个持仓
         if self.s_or_b == 'b':
             # 多头持仓，并且当前价格大约加仓价
-            if price >= cell.plan_add_price:
+            if price >= self.plan_add_price:
                 a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
-                                cell.plan_add_price, HALF_N)
+                                cell.plan_add_price, HALF_N, cell.N)
                 self.addCell(a_cell)
 
         if self.s_or_b == 's':
             # 空头持仓，并且当前价格小于加仓价
-            if price <= cell.plan_add_price:
+            if price <= self.plan_add_price:
                 a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
-                                cell.plan_add_price, HALF_N)
+                                cell.plan_add_price, HALF_N, cell.N)
                 self.addCell(a_cell)
 
 
@@ -377,12 +406,13 @@ class HgStrategy(CtaTemplate):
 # 海龟类继承基本处理类，增加海龟法则比较的属性
 class HgCell(Cell):
 
-    def __init__(self, strategy, vtSymbol, direction, target_unit, plan_in_price, in_condition):
+    def __init__(self, strategy, vtSymbol, direction, target_unit, plan_in_price, in_condition, N):
         """Constructor"""
         super(HgCell, self).__init__(strategy, vtSymbol, direction, target_unit, plan_in_price, in_condition)
 
+        self.N = N # 本次交易的N
         self.plan_stop_price = None # 止损价格
-        self.plan_add_price = None  # 加仓价格
+        #self.plan_add_price = None  # 加仓价格
 
 #hg = HgCell('strategy', 'vtSymbol', 'direction', 'target_unit', 'plan_in_price', 'in_condition')
 #print(hg.__dict__)
