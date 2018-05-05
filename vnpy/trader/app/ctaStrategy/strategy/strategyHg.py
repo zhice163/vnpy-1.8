@@ -374,19 +374,47 @@ class HgStrategy(CtaTemplate):
             # 多头持仓，并且当前价格大约加仓价
             if price >= self.plan_add_price:
                 a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
-                                cell.plan_add_price, HALF_N, cell.N)
+                                self.plan_add_price, HALF_N, cell.N)
                 self.addCell(a_cell)
 
         if self.s_or_b == 's':
             # 空头持仓，并且当前价格小于加仓价
             if price <= self.plan_add_price:
                 a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
-                                cell.plan_add_price, HALF_N, cell.N)
+                                self.plan_add_price, HALF_N, cell.N)
                 self.addCell(a_cell)
 
 
 
     # ----------------------------------------------------------------------
+    # 更新 self.plan_stop_price
+    # 从最后一个仓位开始，计算每个仓位的退出值
+    def update_plan_stop_price(self):
+
+        last_real_in_price = None # 记录上一个价格
+        last_plan_stop_price = None # 记录上一个止损价格
+
+        for cell in self.hgCellList.reverse():
+            real_in_price = cell.real_in_price # 当前cell的平均买入价格
+
+            # 如果处理的是最后一个cell，直接更新
+            if last_real_in_price == None:
+                cell.plan_stop_price = cell.real_in_price - 2*cell.N
+            else:
+                if cell.real_in_price != 0:
+                    if 0.8 < float(last_real_in_price)/cell.real_in_price < 1.2:
+                        # 差距不大，直接用上一个退出值
+                        cell.plan_stop_price = last_plan_stop_price
+                    else:
+                        # 两次买入价格差距大，使用当次买入值计算
+                        cell.plan_stop_price = cell.real_in_price - 2 * cell.N
+                else:
+                    self.myPrint('update_plan_stop_price','【error】cell.real_in_price == 0')
+                    self.myPrint('update_plan_stop_price', '【error】cell info is' + str(cell.__dict__).decode('unicode-escape'))
+
+
+        last_real_in_price = cell.real_in_price
+        last_plan_stop_price = cell.plan_stop_price
 
 
 
@@ -394,7 +422,7 @@ class HgStrategy(CtaTemplate):
 
 
 
-    # ----------------------------------------------------------------------
+                        # ----------------------------------------------------------------------
 
 
 
@@ -413,6 +441,8 @@ class HgCell(Cell):
         self.N = N # 本次交易的N
         self.plan_stop_price = None # 止损价格
         #self.plan_add_price = None  # 加仓价格
+
+
 
 #hg = HgCell('strategy', 'vtSymbol', 'direction', 'target_unit', 'plan_in_price', 'in_condition')
 #print(hg.__dict__)
