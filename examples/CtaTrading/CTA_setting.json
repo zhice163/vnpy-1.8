@@ -1,19 +1,16 @@
 [
     {
-        "name": "double ema",
-        "className": "EmaDemoStrategy",
-        "vtSymbol": "IF1706"
-    },
+        "name": "hg",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"rb",
 
-    {
-        "name": "atr rsi",
-        "className": "AtrRsiStrategy",
-        "vtSymbol": "IC1706"
-    },
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_01",
+        "instanceAccount":100000
 
-    {
-        "name": "king keltner",
-        "className": "KkStrategy",
-        "vtSymbol": "IH1706"
     }
 ]

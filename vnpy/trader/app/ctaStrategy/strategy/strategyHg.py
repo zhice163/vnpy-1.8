@@ -7,6 +7,9 @@
 
 问题
 1、分批成交时，onOrder ontrade是怎么样的呢
+
+一些思路
+1、为了保证数据的准确性
 """
 
 from __future__ import division
@@ -22,8 +25,18 @@ from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
 from vnpy.trader.vtZcEngine import ctaDbEngine
 from vnpy.trader.vtZcObject import mydb, Cell
 
+try:
+    import cPickle as pickle    #python 2
+except ImportError as e:
+    import pickle
+
+
 BREAK_MIDDLEWINDOW = '20日突破'
 HALF_N = '0.5N'
+
+
+# 海龟策略用到的一些表名
+TB_HG_MAIN = "TB_HG_MAIN"
 
 
 ########################################################################
@@ -46,8 +59,11 @@ class HgStrategy(CtaTemplate):
 
                  # 交易的实例名信息，一个实例包含一组策略实例
                  'instanceName',
+                 'instanceId',
                  'instanceAccount']
 
+    # 保存了要用pickle恢复的参数列表
+    pickleParamList = []
     
     # 同步列表，保存了需要保存到数据库的变量名称
     syncList = ['pos']
@@ -59,44 +75,119 @@ class HgStrategy(CtaTemplate):
         """Constructor"""
         super(HgStrategy, self).__init__(ctaEngine, setting)
 
+        # 每次启动要重建的参数
         self.bg = BarGenerator(self.onBar)
-        self.cacheDays = max(self.longWindow, (2*self.middleWindow) + 1)
         self.am = ArrayManager(self.cacheDays)
-        self.myDb = mydb # 数据库引擎
-        self.ctadbEngine = ctaDbEngine(mydb) # cta 数据库操作的一些封装
+        self.cacheDays = max(self.longWindow, (2 * self.middleWindow) + 1)
+        self.myDb = mydb  # 数据库引擎
+        self.ctadbEngine = ctaDbEngine(mydb)  # cta 数据库操作的一些封装
+        self.monitor = {}  # 合约当天的 10日线高低、20日线高低、55日线和ART信息
+        self.contracts = {}  # 最新的合约信息
+        self.sessionID = None  # 本地交易
+        self.frontID = None  # 本次交易的
+        self.productID = ''  # 品种
+        # self.sessionid = uuid.uuid1() # 本次唯一id
 
-        self.hgPosition = {} # 持仓信息
-        self.monitor = {} # 合约当天的 10日线高低、20日线高低、55日线和ART信息
-        self.contracts = {} # 最新的合约信息
-        self.test = True
 
+        # 【重要】所有要pickle存储的数据都要记录在变量中
+        self.pickleItemList = ["orderList",
+                               "tradeList",
+                               "hgCellList",
+                               "plan_add_price",
+                               "atr",
+                               "cell_num",
+                               "s_or_b",
+                               "offsetProfit",
+                               "floatProfit",
+                               "max_cell_num"]
+
+        # 每次启动要用pickle恢复的数据
+        #self.hgPosition = {} # 持仓信息
         self.orderList = [] # 报单列表
         self.tradeList = [] # 成交列表
-
-        self.sessionID = None # 本地交易
-        self.frontID = None # 本次交易的
-
-        #self.sessionid = uuid.uuid1() # 本次唯一id
-
-        self.productID = ''  # 品种
-
         self.hgCellList = []  # 持仓列表，元素为HgCell
-        self.plan_add_price = None  # 加仓价格
-        self.unit = None #
-
+        self.plan_add_price = -1  # 加仓价格
+        self.atr = -1
         self.cell_num = 0  # 持仓量
         self.s_or_b = ''  # 买卖方向
-        self.offsetProfit = ''  # 平仓盈亏
-        self.floatProfit = ''  # 浮动盈亏
+        self.offsetProfit = -1  # 平仓盈亏
+        self.floatProfit = -1  # 浮动盈亏
         self.max_cell_num = 3  # 最大持仓量
 
 
-        # 海龟交易主力合约，配置时 symbol 配置的是品种名称，进行翻译。
-        ret = self.ctadbEngine.getDominantByProductID(self.vtSymbol)
 
-        if ret is not None:
+        # TODO通过pickle进行数据恢复
+        self.recoveryFromDb()
+
+        # 更新hgCellList 每个cell的策略引用
+        # 原因是：hgCellList 是从数据库中恢复的，里面的引用有可能已经失效，所以更新为最新的
+
+        for hgcell in self.hgCellList:
+            hgcell.strategy = self
+
+
+        # 海龟交易主力合约，配置时 symbol 配置的是品种名称，进行翻译。
+        ret = self.ctadbEngine.getDominantByProductID(self.productID)
+
+        if ret is not None and self.vtSymbol != "" and self.vtSymbol != ret:
+            self.setStop("【重要】，需要手工移仓")
+            self.myPrint("__init__","ret is not None and self.vtSymbol != ret, vtSymbol = %s, ret = %s", (self.vtSymbol,ret))
+            # TODO 目前出现移仓情况需要手动处理
+
+        if ret is not None and self.vtSymbol == "" :
             self.vtSymbol = ret
-        #TODO 对 self.vtSymbo 进行校验
+
+
+
+    # 将一些数据保存在数据库中
+    # 目前在三个地方调用： 每次 onbar onOrder onTrading
+    def saveIntoDB(self):
+
+        ret_data = {}
+        d = self.__dict__
+
+        ret_data['instanceName'] = self.instanceName
+        ret_data['instanceId'] = self.instanceId
+
+        for key in self.pickleItemList:
+            # 对于字典和列表类型的变量，使用pickle进行存储
+            if isinstance(d[key], dict) or isinstance(d[key], list):
+                pickleData = pickle.dumps(d[key])
+                ret_data[key] = pickleData
+            else:
+                ret_data[key] = d[key]
+        # 写入数据库
+        flt = {'instanceName':self.instanceName, 'instanceId':self.instanceId}
+        mydb.dbUpdate(MAIN_DB_NAME, TB_HG_MAIN, ret_data, flt, upsert=True)
+
+    # 根据数据库记录恢复数据
+    def recoveryFromDb(self):
+
+        flt = {'instanceName': self.instanceName, 'instanceId': self.instanceId}
+        ret = mydb.dbQuery(MAIN_DB_NAME, TB_HG_MAIN, flt)
+
+        # 数据库没有查到记录，正常返回
+        if ret is None or ret.count() == 0:
+            return
+
+        if ret.count() == 1:
+            # 进行数据恢复
+            d = self.__dict__
+            for key in self.pickleItemList:
+                # 对于字典和列表类型的变量，使用pickle进行存储
+                if isinstance(d[key], dict) or isinstance(d[key], list):
+                    pickleData = pickle.loads(ret[key])
+                    d[key] = pickleData
+                else:
+                    d[key] = ret[key]
+
+        else:
+            self.stopTrading()
+            self.myPrint("recoveryFromDb",'【ERROR】返回多条记录，instanceName = %s, instanceId = %s' , (self.instanceName, self.instanceId))
+
+    def stopTrading(self, info = ""):
+        self.myPrint("stopTrading", info)
+        self.trading = False
 
     #----------------------------------------------------------------------
     def onInit(self):
@@ -122,7 +213,13 @@ class HgStrategy(CtaTemplate):
         longWindowHighBreak = self.am.high[-self.longWindow:].max()
         longWindowLowBreak = self.am.low[-self.longWindow:].min()
 
+
         atr = self.am.atr(20, False)
+        # 如果记录过atr，则使用开仓时候的 atr
+        if self.atr != -1:
+            atr = self.atr
+
+
 
         unit =  int(self.instanceAccount * 0.01 / (atr * self.contracts[self.vtSymbol]['size']))
         self.monitor = {
@@ -178,6 +275,11 @@ class HgStrategy(CtaTemplate):
         #strategy.inited = False
 
         self.myPrint("onBar", bar.__dict__)
+
+        if not self.trading:
+            self.myPrint("onBar", 'self.trading is false')
+            return
+
         #self.buy(3750, 1)
 
         #return
@@ -232,6 +334,11 @@ class HgStrategy(CtaTemplate):
                                 self.monitor['middleWindowLowBreak'], BREAK_MIDDLEWINDOW, self.monitor['atr'])
                 self.addCell(a_cell)
 
+            # 记录开仓时候的art
+            if isBreak == True:
+                self.atr = self.monitor['atr']
+                #  TODO 清仓完毕后需要重置一些属性，尤其是ATR
+
         if self.cell_num == 0:
             # 下面的操作只有有持仓时才操作
             return
@@ -256,6 +363,8 @@ class HgStrategy(CtaTemplate):
         self.check_add_condition(bar.close)
 
         #TODO 增加离场条件的记录？
+        # 记录在数据库中
+        self.saveIntoDB()
 
     #----------------------------------------------------------------------
     def onOrder(self, order):
@@ -278,8 +387,8 @@ class HgStrategy(CtaTemplate):
         else:
             self.myPrint("onOrder", 'order 更新失败')
 
-
-
+        # 记录在数据库中
+        self.saveIntoDB()
         # TODO
 
     
@@ -311,11 +420,15 @@ class HgStrategy(CtaTemplate):
                     self.plan_add_price = cell.real_in_price - (cell.N/2)
 
 
-
+        # 更新退出价格信息
+        self.update_plan_stop_price()
 
         # 接收到成交之后打印一下自己
         for hgcell in self.hgCellList:
             hgcell.print_self()
+
+        # 记录在数据库中
+        self.saveIntoDB()
     
     #----------------------------------------------------------------------
     def onStopOrder(self, so):
@@ -411,6 +524,8 @@ class HgStrategy(CtaTemplate):
                 else:
                     self.myPrint('update_plan_stop_price','【error】cell.real_in_price == 0')
                     self.myPrint('update_plan_stop_price', '【error】cell info is' + str(cell.__dict__).decode('unicode-escape'))
+
+                    self.trading = False
 
 
         last_real_in_price = cell.real_in_price

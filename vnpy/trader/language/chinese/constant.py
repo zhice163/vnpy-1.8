@@ -120,5 +120,7 @@ TB_CONTRACT_HIS= 'contract_his'
 TB_DOMINANT = 'dominant'
 TB_DOMINANT_HIS = 'dominant_his'
 
+TB_HG_MAIN = "TB_HG_MAIN"
+
 # 中期上下载的数据
 ZQ_DAILY_DB_NAME = 'ZQ_Daily_Db'
