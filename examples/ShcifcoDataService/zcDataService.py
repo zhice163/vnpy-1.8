@@ -78,14 +78,92 @@ def downDayBarBySymbol(symbol, num):
 
 
 
+
+# 计算主力合约
+def update_dominant_contract():
+    mydb.writeLog(u'【计算主力合约】开始计算主力合约。')
+    # 查询合约表中所有的合约信息
+    ret_contract = mydb.dbQuery(MAIN_DB_NAME, TB_CONTRACT, {}, ret={"vtSymbol": 1, "productID": 1, "expiryDate": 1})
+    # 查询现在主力表中的数据
+    ret_dominant = mydb.dbQuery(MAIN_DB_NAME, TB_DOMINANT, {},
+                                ret={"productID": 1, "vtSymbol": 1, "updateTime": 1, "expiryDate": 1,
+                                     "openInterest": 1})
+
+    updateTime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))  # 当时的时间
+    updateMonth = time.strftime('%Y%m', time.localtime(time.time()))  # 当前月
+    updateDay = time.strftime('%Y%m%d', time.localtime(time.time()))  # 当前日期
+    contractDict = {}  # 记录productid 和 最大的持仓量,且记录的合约都是有效的
+
+
+    for tmp in ret_contract:
+        vtSymbol = tmp["vtSymbol"]
+        productID = tmp["productID"]
+        expiryDate = tmp["expiryDate"]
+
+        # 如果合约在有效期内(交割月之前），查询合约在当天的持仓量
+        if updateMonth < expiryDate[:6]:
+            # 查询合约当天的持仓信息
+            ret_tick = mydb.dbQuery(ZQ_DAILY_DB_NAME, vtSymbol, {'date': updateDay},
+                                   ret={"vtSymbol": 1, "updateTime": 1, "openInterest": 1})
+            if ret_tick.count() == 1 :
+                openInterest = ret_tick[0]["openInterest"]
+                info = contractDict.get(productID,None)
+                if info == None or openInterest > info["openInterest"]:
+                    contractDict[productID] = {"vtSymbol":vtSymbol,"expiryDate":expiryDate,"openInterest":openInterest}
+            else:
+                mydb.writeLog(u'【ERROR】【update_dominant_contract】查询%s合约在%s日期的信息有误，条目数为%d。' % (vtSymbol,updateDay,ret_tick.count()))
+                info = contractDict.get(productID, None)
+                if info == None:
+                    contractDict[productID] = {"vtSymbol": vtSymbol, "expiryDate": expiryDate,
+                                               "openInterest": 0}
+    l = []
+    for key, value in contractDict.items():
+        productID = key
+        for tmp_info in ret_dominant:
+            if tmp_info["productID"] == productID:
+                # 只有主力表中的合约没到交割月，且 当天持仓量小于主力表中的1.1倍时，拿主力表中的数据进行覆盖
+                if updateMonth < tmp_info["expiryDate"][:6] and value["openInterest"] < 1.1*tmp_info["openInterest"]:
+                    contractDict[productID] = {"vtSymbol": tmp_info["vtSymbol"], "expiryDate": tmp_info["expiryDate"],
+                                               "openInterest": tmp_info["openInterest"]}
+
+        l.append({"productID":productID,
+              "vtSymbol":contractDict[productID]["vtSymbol"],
+              "expiryDate":contractDict[productID]["expiryDate"],
+              "openInterest": contractDict[productID]["openInterest"],
+                "date":updateDay, # 对应日线表中的date
+              "updateTime": updateTime})
+
+    if len(l) > 0:
+        # 写入历史表中
+        mydb.dbInsert_many(MAIN_DB_NAME, TB_DOMINANT_HIS, l)
+        mydb.writeLog(u'【数据清洗】主力历史表更新完成。')
+        # 写入主力表中
+        # 如果主力表不为空，先删除
+        if ret_dominant.count() != 0:
+            mydb.dbRemove(MAIN_DB_NAME, TB_DOMINANT, {})
+        # 写入主力表
+        mydb.dbInsert_many(MAIN_DB_NAME, TB_DOMINANT, l)
+        mydb.writeLog(u'【数据清洗】主力表更新完成。')
+    else:
+        mydb.writeLog(u'【ERROR】【数据清洗】发现 l 为空。')
+
+
+#
+# 获取库中所有的合约信息
+def getAllContract():
+    # 在合约表中，查询 产品id 合约名 和 合约终止日期
+    ret_contract = mydb.dbQuery(MAIN_DB_NAME, TB_CONTRACT, {}, ret={"vtSymbol": 1, "productID": 1, "expiryDate": 1})
+    now_date = time.strftime('%Y%m%d', time.localtime(time.time()))
+    return [ret['vtSymbol'] for ret in ret_contract if now_date < ret['expiryDate']]
+
 # ----------------------------------------------------------------------
 def downloadAllDayBar(num):
     """下载所有配置中的合约的分钟线数据"""
     print '-' * 50
     print u'开始下载合约分钟线数据'
     print '-' * 50
-
-    for symbol in SYMBOLS:
+    vtSymbolList = getAllContract()
+    for symbol in vtSymbolList:
         downDayBarBySymbol(symbol, num)
         time.sleep(1)
 
@@ -93,4 +171,5 @@ def downloadAllDayBar(num):
     print u'合约分钟线数据下载完成'
     print '-' * 50
 
-downloadAllDayBar(60)
+#downloadAllDayBar(100)
+update_dominant_contract()
