@@ -35,7 +35,8 @@ BREAK_MIDDLEWINDOW = '20日突破'
 HALF_N = '0.5N'
 
 
-# 海龟策略用到的一些表名
+# 海龟策略用到的一些表名和数据库名
+MAIN_DB_NAME = 'VnTrader_Main_Db'
 TB_HG_MAIN = "TB_HG_MAIN"
 
 
@@ -53,6 +54,7 @@ class HgStrategy(CtaTemplate):
                  'className',
                  'author',
                  'vtSymbol',
+                 'productID',
                  'shortWindow',
                  'middleWindow',
                  'longWindow',
@@ -77,15 +79,14 @@ class HgStrategy(CtaTemplate):
 
         # 每次启动要重建的参数
         self.bg = BarGenerator(self.onBar)
-        self.am = ArrayManager(self.cacheDays)
         self.cacheDays = max(self.longWindow, (2 * self.middleWindow) + 1)
+        self.am = ArrayManager(self.cacheDays)
         self.myDb = mydb  # 数据库引擎
         self.ctadbEngine = ctaDbEngine(mydb)  # cta 数据库操作的一些封装
         self.monitor = {}  # 合约当天的 10日线高低、20日线高低、55日线和ART信息
         self.contracts = {}  # 最新的合约信息
         self.sessionID = None  # 本地交易
         self.frontID = None  # 本次交易的
-        self.productID = ''  # 品种
         # self.sessionid = uuid.uuid1() # 本次唯一id
 
 
@@ -138,7 +139,6 @@ class HgStrategy(CtaTemplate):
             self.vtSymbol = ret
 
 
-
     # 将一些数据保存在数据库中
     # 目前在三个地方调用： 每次 onbar onOrder onTrading
     def saveIntoDB(self):
@@ -152,6 +152,8 @@ class HgStrategy(CtaTemplate):
         for key in self.pickleItemList:
             # 对于字典和列表类型的变量，使用pickle进行存储
             if isinstance(d[key], dict) or isinstance(d[key], list):
+                print(key)
+                print(d[key])
                 pickleData = pickle.dumps(d[key])
                 ret_data[key] = pickleData
             else:
@@ -171,15 +173,17 @@ class HgStrategy(CtaTemplate):
             return
 
         if ret.count() == 1:
+
+            theData = ret[0]
             # 进行数据恢复
             d = self.__dict__
             for key in self.pickleItemList:
                 # 对于字典和列表类型的变量，使用pickle进行存储
                 if isinstance(d[key], dict) or isinstance(d[key], list):
-                    pickleData = pickle.loads(ret[key])
+                    pickleData = pickle.loads(theData[key])
                     d[key] = pickleData
                 else:
-                    d[key] = ret[key]
+                    d[key] = theData[key]
 
         else:
             self.stopTrading()
@@ -275,6 +279,7 @@ class HgStrategy(CtaTemplate):
         #strategy.inited = False
 
         self.myPrint("onBar", bar.__dict__)
+        self.printCells("*" * 20 + " in onbar")
 
         if not self.trading:
             self.myPrint("onBar", 'self.trading is false')
@@ -284,18 +289,9 @@ class HgStrategy(CtaTemplate):
 
         #return
         # 测试
+        self.monitor['middleWindowHighBreak'] = 3575
+        # 测试结束
 
-        self.s_or_b = 'b'
-        a_cell = HgCell(self, bar.vtSymbol, self.s_or_b, 1,
-                        self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW, self.monitor['atr'])
-        a_cell.target_unit = 1
-        a_cell.real_unit = 0
-        self.addCell(a_cell)
-
-        a_cell.hand_cell(3700)
-
-
-        return
         vtSymbol = bar.vtSymbol
 
         # 如果发现有合约初始化未完成，直接返回
@@ -309,69 +305,101 @@ class HgStrategy(CtaTemplate):
 
         # 当前持仓大于最大持仓要求
         if self.cell_num >= self.max_cell_num:
+            print("已达到最大持仓")
+            return
+
+        # 只有所有订单文档才继续
+        if not self.is_all_cell_stable():
+            self.printCells("not self.is_all_cell_stable()")
             return
 
         # TODO 当前持仓是否满足 6 12 规则
 
         # TODO 撤销所有的合约
 
+        # cell 是否发生变化，如果有发生变化，就不再进行下面的逻辑
+        isCellChange = False
+
         # 如果未持有合约，判断是否有突破
         if self.cell_num == 0:
-            isBreak = False
+
             if bar.close > self.monitor['middleWindowHighBreak']:
                 # 有向上突破
-                isBreak = True
+                isCellChange = True
                 self.s_or_b = 'b'
-                a_cell = HgCell(self, vtSymbol, self.s_or_b, self.monitor['unit'],
+                a_cell = HgCell(vtSymbol, self.s_or_b, self.monitor['unit'],
                                 self.monitor['middleWindowHighBreak'], BREAK_MIDDLEWINDOW, self.monitor['atr'])
                 self.addCell(a_cell)
 
             elif bar.close < self.monitor['middleWindowLowBreak']:
                 # 有向下突破
-                isBreak = True
+                isCellChange = True
                 self.s_or_b = 's'
-                a_cell = HgCell(self, vtSymbol, self.s_or_b, self.monitor['unit'],
+                a_cell = HgCell(vtSymbol, self.s_or_b, self.monitor['unit'],
                                 self.monitor['middleWindowLowBreak'], BREAK_MIDDLEWINDOW, self.monitor['atr'])
                 self.addCell(a_cell)
 
-            # 记录开仓时候的art
-            if isBreak == True:
+            # 初始持仓为0，并出现成交，说明开仓了，记录开仓时候的art
+            if isCellChange == True:
                 self.atr = self.monitor['atr']
                 #  TODO 清仓完毕后需要重置一些属性，尤其是ATR
 
         if self.cell_num == 0:
             # 下面的操作只有有持仓时才操作
+            print("on bar self.cell_num == 0")
             return
 
         # TODO 判断订单稳定后再继续操作
         # TODO 判断是否达到目标持仓再操作
-        # 如果持有合约，判断是否触及退出
-        # 10日线退出法则, 多头头寸，价格低于最近10日最低点时退出
-        if self.s_or_b == 'b' and bar.close < self.monitor['shortWindowLowBreak']:
-            self.quitAllOrders()
-        # 10日线退出法则, 空头头寸，价格高于最近10日最高点时退出
-        if self.s_or_b == 's' and bar.close > self.monitor['shortWindowHighBreak']:
-            self.quitAllOrders()
+
+        if not isCellChange:
+            # 如果持有合约，判断是否触及退出
+            # 10日线退出法则, 多头头寸，价格低于最近10日最低点时退出
+            if self.s_or_b == 'b' and bar.close < self.monitor['shortWindowLowBreak']:
+                self.quitAllOrders()
+                isCellChange = True
+            # 10日线退出法则, 空头头寸，价格高于最近10日最高点时退出
+            if self.s_or_b == 's' and bar.close > self.monitor['shortWindowHighBreak']:
+                self.quitAllOrders()
+                isCellChange = True
 
 
         # 如果持有合约，判断是否触及止损
         # TODO 涨跌停的处理
-
-        self.check_stop_condition(bar.close)
+        if not isCellChange:
+            isCellChange = self.check_stop_condition(bar.close)
 
         # 如果持有合约，判断是否触及加仓，同时判断仓位是否超过限制
-        self.check_add_condition(bar.close)
+        if not isCellChange:
+            isCellChange = self.check_add_condition(bar.close)
+
+        # 处理每个cell
+        if isCellChange:
+            for hgcell in self.hgCellList:
+                hgcell.hand_cell(self, bar.close)
+
+            # 记录在数据库中
+            self.saveIntoDB()
 
         #TODO 增加离场条件的记录？
-        # 记录在数据库中
-        self.saveIntoDB()
+
+        self.printCells("*" * 20 + " out onbar")
+
+
+    # 判断是否所有cell的订单都是稳定的
+    def is_all_cell_stable(self):
+        ret = True
+        for hgcell in self.hgCellList:
+            ret = hgcell.is_all_order_stable() and ret
+        return ret
+
 
     #----------------------------------------------------------------------
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
         # 对于无需做细粒度委托控制的策略，可以忽略onOrder
         self.myPrint("onOrder", str(order.__dict__).decode('unicode-escape'))
-
+        self.printCells("*" * 20 + " in onorder")
 
         self.orderList.append(order)
 
@@ -389,6 +417,7 @@ class HgStrategy(CtaTemplate):
 
         # 记录在数据库中
         self.saveIntoDB()
+        self.printCells("*" * 20 + " out onorder")
         # TODO
 
     
@@ -400,9 +429,16 @@ class HgStrategy(CtaTemplate):
         self.myPrint("onTrade", str(trade.__dict__).decode('unicode-escape'))
         self.tradeList.append(trade)
 
+        self.printCells("*"*20 + " in onTrade")
+        is_update = False
+        orderid = trade.vtOrderID
+        # 如果 sessionID 和 frontID 维护了
+        if self.sessionID is not None and self.frontID is not None:
+            orderid = self.sessionID + '.' + self.frontID + '.' + orderid
+
         # 把 Trade 更新到 cell 中
         for hgcell in self.hgCellList:
-            is_update = (hgcell.updateTrade(trade) or is_update)
+            is_update = (hgcell.updateTrade(orderid, trade) or is_update)
 
         if is_update:
             self.myPrint("onTrade", 'trade 更新成功')
@@ -429,6 +465,8 @@ class HgStrategy(CtaTemplate):
 
         # 记录在数据库中
         self.saveIntoDB()
+
+        self.printCells("*" * 20 + " out onTrade")
     
     #----------------------------------------------------------------------
     def onStopOrder(self, so):
@@ -461,41 +499,59 @@ class HgStrategy(CtaTemplate):
 
     def check_stop_condition(self, price):
         """ 检验是否触发止损条件"""
+        ret = False # 默认返回True
+
         if self.s_or_b == 'b':
             # 多头持仓
             for cell in self.hgCellList:
-                if price <= cell.plan_stop_price:
-                    # 当前价格小于等于止损价格时，设定目标仓位为0
-                    cell.target_unit = 0
+                if cell.plan_stop_price is not None:
+                    if price <= cell.plan_stop_price:
+                        # 当前价格小于等于止损价格时，设定目标仓位为0
+                        cell.target_unit = 0
+                        ret = True
+                else:
+                    self.printCells("【ERROR】check_stop_condition,cell.plan_stop_price is None")
         if self.s_or_b == 's':
             # 空头持仓
             for cell in self.hgCellList:
-                if price >= cell.plan_stop_price:
-                    # 当前价格大于等于止损价格时，设定目标仓位为0
-                    cell.target_unit = 0
+                if cell.plan_stop_price is not None:
+                    if price >= cell.plan_stop_price:
+                        # 当前价格大于等于止损价格时，设定目标仓位为0
+                        cell.target_unit = 0
+                        ret = True
+                else:
+                    self.printCells("【ERROR】check_stop_condition,cell.plan_stop_price is None")
+
+        return ret
 
     # ----------------------------------------------------------------------
     def check_add_condition(self, price):
         """检验是否触及加仓条件"""
+
+        ret = False
         if len(self.hgCellList) >= self.max_cell_num:
             # 如果已达到最大仓位，直接返回
             # TODO 增加关联策略实例的仓位控制
-            return
+            return ret
 
-        cell = self.hgCellList(len(self.hgCellList) - 1) # 取最后一个持仓
+        cell = self.hgCellList[len(self.hgCellList) - 1] # 取最后一个持仓
         if self.s_or_b == 'b':
             # 多头持仓，并且当前价格大约加仓价
             if price >= self.plan_add_price:
-                a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
+                a_cell = HgCell(self.vtSymbol, self.s_or_b, self.monitor['unit'],
                                 self.plan_add_price, HALF_N, cell.N)
                 self.addCell(a_cell)
+                ret = True
 
         if self.s_or_b == 's':
             # 空头持仓，并且当前价格小于加仓价
             if price <= self.plan_add_price:
-                a_cell = HgCell(self, self.vtSymbol, self.s_or_b, self.monitor['unit'],
+                a_cell = HgCell(self.vtSymbol, self.s_or_b, self.monitor['unit'],
                                 self.plan_add_price, HALF_N, cell.N)
                 self.addCell(a_cell)
+                ret = True
+
+        return ret
 
 
 
@@ -508,6 +564,13 @@ class HgStrategy(CtaTemplate):
         last_plan_stop_price = None # 记录上一个止损价格
 
         for cell in self.hgCellList.reverse():
+
+            self.real_unit = 0  # 真实持仓单位
+            self.real_in_price = 0  # 平均入场价格
+
+            if cell.real_unit == 0 or cell.real_in_price == 0:
+                continue
+
             real_in_price = cell.real_in_price # 当前cell的平均买入价格
 
             # 如果处理的是最后一个cell，直接更新
@@ -528,8 +591,16 @@ class HgStrategy(CtaTemplate):
                     self.trading = False
 
 
-        last_real_in_price = cell.real_in_price
-        last_plan_stop_price = cell.plan_stop_price
+            last_real_in_price = cell.real_in_price
+            last_plan_stop_price = cell.plan_stop_price
+
+
+    def printCells(self,info=""):
+        print(info)
+        print("start printcells")
+        for cell in self.hgCellList:
+            cell.print_self()
+        print("end printcells")
 
 
 
@@ -549,9 +620,9 @@ class HgStrategy(CtaTemplate):
 # 海龟类继承基本处理类，增加海龟法则比较的属性
 class HgCell(Cell):
 
-    def __init__(self, strategy, vtSymbol, direction, target_unit, plan_in_price, in_condition, N):
+    def __init__(self, vtSymbol, direction, target_unit, plan_in_price, in_condition, N):
         """Constructor"""
-        super(HgCell, self).__init__(strategy, vtSymbol, direction, target_unit, plan_in_price, in_condition)
+        super(HgCell, self).__init__( vtSymbol, direction, target_unit, plan_in_price, in_condition)
 
         self.N = N # 本次交易的N
         self.plan_stop_price = None # 止损价格

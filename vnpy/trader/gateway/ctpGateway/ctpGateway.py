@@ -353,9 +353,10 @@ class CtpMdApi(MdApi):
         """行情推送"""
         # 过滤尚未获取合约交易所时的行情推送
         symbol = data['InstrumentID']
+
         if symbol not in symbolExchangeDict:
             return
-        
+
         # 创建对象
         tick = VtTickData()
         tick.gatewayName = self.gatewayName
@@ -732,8 +733,8 @@ class CtpTdApi(TdApi):
             return
 
         # 为测试增加打印信息
-        print("*" * 20 + "    " + 'onRspQryInvestorPosition')
-        print(data)
+        #print("*" * 20 + "    " + 'onRspQryInvestorPosition')
+        #print(data)
 
 
         # 获取持仓缓存对象
@@ -777,8 +778,8 @@ class CtpTdApi(TdApi):
             # 遍历推送
             for pos in self.posDict.values():
                 self.gateway.onPosition(pos)
-                print("pos")
-                print(pos.__dict__)
+                #print("pos")
+                #print(pos.__dict__)
             # 清空缓存
             self.posDict.clear()
         

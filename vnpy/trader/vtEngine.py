@@ -19,6 +19,7 @@ from vnpy.trader.vtGateway import *
 from vnpy.trader.language import text
 from vnpy.trader.vtFunction import getTempPath
 from vnpy.trader.vtZcObject import mydb
+import time as thetime
 
 
 ########################################################################
@@ -383,6 +384,11 @@ class MainEngine(object):
     def getError(self):
         """查询错误"""
         return self.dataEngine.getError()
+
+
+    def updateDominant(self):
+        # TODO 更新主力合约信息
+        pass
     
 
 ########################################################################
