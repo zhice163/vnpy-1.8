@@ -10,6 +10,14 @@
 
 一些思路
 1、为了保证数据的准确性
+
+
+# 头寸基本规则
+1、单个市场最多4个头寸
+2、高度关联的多个市场6个头寸
+3、松散关联的多个市场10个头寸
+4、单个方向（多头或空头）12个头寸
+
 """
 
 from __future__ import division
@@ -152,8 +160,6 @@ class HgStrategy(CtaTemplate):
         for key in self.pickleItemList:
             # 对于字典和列表类型的变量，使用pickle进行存储
             if isinstance(d[key], dict) or isinstance(d[key], list):
-                print(key)
-                print(d[key])
                 pickleData = pickle.dumps(d[key])
                 ret_data[key] = pickleData
             else:
@@ -180,7 +186,7 @@ class HgStrategy(CtaTemplate):
             for key in self.pickleItemList:
                 # 对于字典和列表类型的变量，使用pickle进行存储
                 if isinstance(d[key], dict) or isinstance(d[key], list):
-                    pickleData = pickle.loads(theData[key])
+                    pickleData = pickle.loads(str(theData[key]))
                     d[key] = pickleData
                 else:
                     d[key] = theData[key]
@@ -289,7 +295,7 @@ class HgStrategy(CtaTemplate):
 
         #return
         # 测试
-        self.monitor['middleWindowHighBreak'] = 3575
+        #self.monitor['middleWindowHighBreak'] = 3575
         # 测试结束
 
         vtSymbol = bar.vtSymbol
@@ -563,7 +569,7 @@ class HgStrategy(CtaTemplate):
         last_real_in_price = None # 记录上一个价格
         last_plan_stop_price = None # 记录上一个止损价格
 
-        for cell in self.hgCellList.reverse():
+        for cell in list(reversed(self.hgCellList)):
 
             self.real_unit = 0  # 真实持仓单位
             self.real_in_price = 0  # 平均入场价格

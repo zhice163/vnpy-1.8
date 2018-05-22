@@ -3,7 +3,14 @@
 import sys
 reload(sys)
 sys.setdefaultencoding('utf8')
-#sys.path.append("/srv/vnpy18")
+
+import os
+if os.path.exists('/home/ubuntu/vnpy/vnpy-1.8/'):
+    sys.path.append("/home/ubuntu/vnpy/vnpy-1.8/")
+    print('sys.path.append - /home/ubuntu/vnpy/vnpy-1.8/')
+elif os.path.exists('/srv/vnpy18'):
+    sys.path.append("/srv/vnpy18")
+    print('sys.path.append - /srv/vnpy18')
 
 import multiprocessing
 from time import sleep
@@ -15,6 +22,8 @@ from vnpy.trader.vtEngine import MainEngine, LogEngine
 from vnpy.trader.gateway import ctpGateway
 from vnpy.trader.app import ctaStrategy
 from vnpy.trader.app.ctaStrategy.ctaBase import EVENT_CTA_LOG
+
+
 
 
 
@@ -57,6 +66,8 @@ def runChildProcess():
     le.info(u'连接CTP接口')
     
     sleep(10)    # 等待CTP接口初始化
+    print("hehe")
+    me.updateDominant()
     
     cta = me.getApp(ctaStrategy.appName)
     

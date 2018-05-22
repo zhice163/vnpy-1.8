@@ -1,5 +1,19 @@
 # encoding: UTF-8
 
+
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+import os
+if os.path.exists('/home/ubuntu/vnpy/vnpy-1.8/'):
+    sys.path.append("/home/ubuntu/vnpy/vnpy-1.8/")
+    print('sys.path.append - /home/ubuntu/vnpy/vnpy-1.8/')
+elif os.path.exists('/srv/vnpy18'):
+    sys.path.append("/srv/vnpy18")
+    print('sys.path.append - /srv/vnpy18')
+
+
 import json
 import time
 import datetime
@@ -8,6 +22,7 @@ import random
 from vnpy.trader.vtZcObject import mydb
 from vnpy.data.shcifco.vnshcifco import ShcifcoApi, PERIOD_1MIN,PERIOD_1DAY
 from vnpy.trader.vtObject import VtBarData
+
 from vnpy.trader.vtConstant import *
 
 
@@ -54,13 +69,12 @@ def downDayBarBySymbol(symbol, num):
         info = u'%s日线数据下载失败' % symbol
         print info
         mydb.writeLog(info)
-        return
+        return info
     i= 0
     for d in l:
         bar = generateVtBar(d)
         d = bar.__dict__
         flt = {'datetime': bar.datetime}
-        print(d)
         # cl.replace_one(flt, d, True)
         mydb.dbUpdate(ZQ_DAILY_DB_NAME, symbol, d, flt, upsert=True)
 
@@ -69,12 +83,13 @@ def downDayBarBySymbol(symbol, num):
     end = time.time()
     cost = (end - start) * 1000
 
-    info = u'合约%s数据下载完成%s - %s，耗时%s毫秒，应下载%d，实下载%d' % (symbol, generateVtBar(l[0]).datetime,
-                                         generateVtBar(l[-1]).datetime, cost, num, i)
+    info = u'合约%s数据下载完成，耗时%s毫秒，应下载%d，实下载%d' % (symbol, cost, num, i)
 
     if i < num:
-        print(u'合约%s未下载足够的数据，计划下载%d，实际下载%d' % (symbol, num, i))
+        info = u'【异常】合约%s未下载足够的数据，计划下载%d，实际下载%d' % (symbol, num, i)
     print info
+
+    return info
 
 
 
@@ -147,6 +162,14 @@ def update_dominant_contract():
     else:
         mydb.writeLog(u'【ERROR】【数据清洗】发现 l 为空。')
 
+    # 返回要在邮件中发送的信息
+    info = '*'*10 + ' 主力合约如下 ' + '*'*10 + '\n'
+    for _info in l:
+        info = info + _info['productID'] + ' ' + '-'*(10-len(_info['productID'])) + ' '+ _info['vtSymbol'] + '\n'
+    print info
+    return info
+
+
 
 #
 # 获取库中所有的合约信息
@@ -163,13 +186,18 @@ def downloadAllDayBar(num):
     print u'开始下载合约分钟线数据'
     print '-' * 50
     vtSymbolList = getAllContract()
+
+    info = '*' * 20 + ' 日线下载数据如下 ' + '*' * 20 + '\n'
     for symbol in vtSymbolList:
-        downDayBarBySymbol(symbol, num)
+        retInfo = downDayBarBySymbol(symbol, num)
+        info = info + str(retInfo) + '\n'
         time.sleep(1)
+
 
     print '-' * 50
     print u'合约分钟线数据下载完成'
     print '-' * 50
-
-#downloadAllDayBar(100)
-update_dominant_contract()
+    print info
+    return info
+#downloadAllDayBar(5)
+#update_dominant_contract()
