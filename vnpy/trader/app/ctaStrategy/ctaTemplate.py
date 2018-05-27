@@ -34,6 +34,7 @@ class CtaTemplate(object):
     # 策略的基本变量，由引擎管理
     inited = False                 # 是否进行了初始化
     trading = False                # 是否启动交易，由引擎管理
+    health = True                  # 策略是否处于健康状态，由策略自己维护
     pos = 0                        # 持仓情况
 
     priceType = PRICETYPE_LIMITPRICE  # 默认为限价单
@@ -47,6 +48,7 @@ class CtaTemplate(object):
     # 变量列表，保存了变量的名称
     varList = ['inited',
                'trading',
+               'health',
                'pos']
     
     # 同步列表，保存了需要保存到数据库的变量名称
@@ -127,7 +129,7 @@ class CtaTemplate(object):
     #----------------------------------------------------------------------
     def sendOrder(self, orderType, price, volume, stop=False):
         """发送委托"""
-        if self.trading:
+        if self.trading and self.health:
             # 如果stop为True，则意味着发本地停止单
             if stop:
                 vtOrderIDList = self.ctaEngine.sendStopOrder(self.vtSymbol, orderType, price, volume, self)
@@ -194,7 +196,7 @@ class CtaTemplate(object):
     #----------------------------------------------------------------------
     def saveSyncData(self):
         """保存同步数据到数据库"""
-        if self.trading:
+        if self.trading  and self.health:
             self.ctaEngine.saveSyncData(self)
     
 
@@ -231,6 +233,7 @@ class TargetPosTemplate(CtaTemplate):
     # 变量列表，保存了变量的名称
     varList = ['inited',
                'trading',
+               'health',
                'pos',
                'targetPos']
 
@@ -245,7 +248,7 @@ class TargetPosTemplate(CtaTemplate):
         self.lastTick = tick
         
         # 实盘模式下，启动交易后，需要根据tick的实时推送执行自动开平仓操作
-        if self.trading:
+        if self.trading and self.health:
             self.trade()
         
     #----------------------------------------------------------------------
