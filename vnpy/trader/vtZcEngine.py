@@ -153,7 +153,22 @@ class DbEngine(object):
         else:
             self.writeLog(text.DATA_GACN_MANY_FAILED)
 
-    #----------------------------------------------------------------------
+    def dbAggregateSum(self, dbName, collectionName, d):
+
+        ret = []
+        if self.dbClient:
+            db = self.dbClient[dbName]
+            collection = db[collectionName]
+
+            if collection:
+                cursor = collection.aggregate(d)
+
+                if cursor:
+                    return cursor
+        return []
+
+
+                #----------------------------------------------------------------------
     def dbUpdate(self, dbName, collectionName, d, flt, upsert=False):
         """向MongoDB中更新数据，d是具体数据，flt是过滤条件，upsert代表若无是否要插入"""
         if self.dbClient:
@@ -162,6 +177,12 @@ class DbEngine(object):
             collection.replace_one(flt, d, upsert)
         else:
             self.writeLog(text.DATA_UPDATE_FAILED)
+
+    def dbClose(self):
+
+        if self.dbClient:
+            self.dbClient.close()
+        self.eventEngine.stop()
 
 
 # cat 策略的数据库封装
@@ -207,3 +228,7 @@ class ctaDbEngine(object):
 
         else:
             return []
+
+
+
+

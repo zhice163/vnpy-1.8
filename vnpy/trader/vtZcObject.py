@@ -6,6 +6,12 @@ from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
                                     STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN,
                                     PRICETYPE_MARKETPRICE)
 
+# 自定义日志级别
+LOG_DEBUG = 10
+LOG_INFO = 20
+LOG_IMPORTANT = 30
+LOG_ERROR = 40
+
 # 全局公用的数据库引擎
 eeEE = EventEngine2()
 mydb = DbEngine(eeEE)
@@ -35,39 +41,56 @@ class Cell(object):
         self.out_orderId_dict = {}  # 记录平仓的订单ID
         self.out_trade_dict = {}  # 记录平仓的成交信息
 
+    # 自定义日志级别输出函数
+    def myPrint(self, strategy, level, funName, data):
+
+        if hasattr(strategy, 'myPrint'):
+            # 如果有自定义日志函数
+            strategy.myPrint(level, funName, data)
+        else:
+            strategy.writeCtaLog(data)
 
 
     # 确认订单是否都已更新并且都已经是稳定订单,
-    def is_all_order_stable(self):
+    def is_all_order_stable(self, strategy):
 
         ret = True
         NOT_FINISHED_STATUS = [STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN]
 
         # 检查开仓订单是否已全部成交
         for orderid, order in self.in_orderId_dict.items():
-            if order.status in NOT_FINISHED_STATUS:
-                ret = False
             if order is None:
                 ret = False
-
+            elif order.status in NOT_FINISHED_STATUS:
+                ret = False
 
         # 检查平仓订单是否已全部成交
         for orderid, order in self.out_orderId_dict.items():
-            if order.status in NOT_FINISHED_STATUS:
-                ret = False
             if order is None:
+                ret = False
+            elif order.status in NOT_FINISHED_STATUS:
                 ret = False
 
         return ret
 
     def hand_cell(self, strategy, price):
         # 查看订单是否都是稳定状态，如果不是稳定状态则直接返回
-        is_stable = self.is_all_order_stable()
+
+        logInfo = "进入hand_cell。"
+        self.myPrint(strategy,LOG_DEBUG, 'cell:hand_cell', logInfo)
+
+        is_stable = self.is_all_order_stable(strategy)
+
+
         if not is_stable:
+            logInfo = "订单处于非稳定状态。"
+            self.myPrint(strategy, LOG_INFO, 'cell:hand_cell', logInfo)
             return []
 
         # 如果目标仓位和真实仓位一致，则直接返回
         if self.target_unit == self.real_unit:
+            logInfo = "目标仓位和真实仓位一致"
+            self.myPrint(strategy, LOG_INFO, 'cell:hand_cell', logInfo)
             return []
 
 
@@ -79,22 +102,24 @@ class Cell(object):
         if self.open_direction == 'b' and self.target_unit > self.real_unit:
             orderIdList = strategy.buy(price, abs(self.target_unit - self.real_unit))
             in_or_out = 'in'
-            print('hand_cell 买开, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
+            logInfo = ('hand_cell 买开, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
         # 卖平中
         if self.open_direction == 'b' and self.target_unit < self.real_unit:
             orderIdList = strategy.sell(price, abs(self.target_unit - self.real_unit))
             in_or_out = 'out'
-            print('hand_cell 卖平, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
+            logInfo = ('hand_cell 卖平, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
         # 卖开中
         if self.open_direction == 's' and self.target_unit > self.real_unit:
             orderIdList = strategy.short(price, abs(self.target_unit - self.real_unit))
             in_or_out = 'in'
-            print('hand_cell 卖开, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
+            logInfo = ('hand_cell 卖开, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
         # 买平中
         if self.open_direction == 's' and self.target_unit < self.real_unit:
             orderIdList = strategy.cover(price, abs(self.target_unit - self.real_unit))
             in_or_out = 'out'
-            print('hand_cell 买平, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
+            logInfo = ('hand_cell 买平, price = %d, mount = %d' % (price, abs(self.target_unit - self.real_unit)))
+
+        self.myPrint(strategy, LOG_IMPORTANT, 'cell:hand_cell', logInfo)
 
         for orderid in orderIdList:
 
@@ -213,3 +238,22 @@ class Cell(object):
                 info = str(_value.__dict__).decode('unicode-escape')
             print("     " + str(_key) + " : " + info)
         print(" ****************** cell 详情结束 *******************")
+
+
+
+"""
+d = [
+    { '$match' : { "instanceName" : "hg01" , "s_or_b" : 's'}},
+    { '$group' : { '_id' : "$instanceName", 'total' : {'$sum' : "$cell_num"} }}
+]
+num = 0
+ret = mydb.dbAggregateSum('VnTrader_Main_Db','TB_HG_MAIN',d)
+
+
+
+for tmp in ret:
+    print(int(tmp['total']))
+
+print(num)
+mydb.dbClose()
+"""

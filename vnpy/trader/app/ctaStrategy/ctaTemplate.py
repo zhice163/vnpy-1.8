@@ -182,6 +182,7 @@ class CtaTemplate(object):
         """记录CTA日志"""
         content = self.name + ':' + content
         self.ctaEngine.writeCtaLog(content)
+
         
     #----------------------------------------------------------------------
     def putEvent(self):
