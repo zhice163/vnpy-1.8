@@ -87,6 +87,7 @@ class HgStrategy(CtaTemplate):
         """Constructor"""
         super(HgStrategy, self).__init__(ctaEngine, setting)
 
+        self.GOON = True
 
         # 每次启动要重建的参数
         self.bg = BarGenerator(self.onBar)
@@ -115,7 +116,8 @@ class HgStrategy(CtaTemplate):
                                "max_cell_num",
                                "health",
                                "MaxInstanceTotalCellNum",
-                               "totalRealUnit"]
+                               "totalRealUnit",
+                               "vtSymbol"]
 
         # 每次启动要用pickle恢复的数据
         #self.hgPosition = {} # 持仓信息
@@ -132,6 +134,7 @@ class HgStrategy(CtaTemplate):
         self.health = True # 交易状态是否健康
         self.MaxInstanceTotalCellNum = 12 # 相同实例下单方向的总持仓上限
         self.totalRealUnit = 0 # 真实总持仓
+        self.vtSymbol = ''
 
 
 
@@ -226,6 +229,7 @@ class HgStrategy(CtaTemplate):
 
             self.myPrint(LOG_IMPORTANT, 'recoveryFromDb', '从数据库载入完成。')
 
+            self.printCells("*" * 20 + " in recoveryFromDb")
         else:
             self.stopTrading()
             self.myPrint(LOG_ERROR, 'recoveryFromDb', '返回多条记录，flt = %s' % (str(flt)))
@@ -282,6 +286,12 @@ class HgStrategy(CtaTemplate):
             'unit': unit
         }
 
+        # 增加一个校验，但凡有一个为零，认为初始化不成功，停止交易
+        if 0 in [shortWindowHighBreak, shortWindowLowBreak, middleWindowHighBreak
+            , middleWindowLowBreak, longWindowHighBreak, longWindowLowBreak, atr, unit]:
+            self.myPrint(LOG_ERROR, 'onInit', u'%s合约初始化失败，信息为%s' % (self.vtSymbol, self.monitor))
+            self.stopTrading()
+
         self.myPrint(LOG_INFO, 'onInit', u'%s合约初始化，信息为%s' % (self.vtSymbol,self.monitor))
 
         # 报单查询测试
@@ -322,6 +332,10 @@ class HgStrategy(CtaTemplate):
         # TODO 异常值的处理
         #strategy.trading = False
         #strategy.inited = False
+
+
+        print(bar.__dict__)
+
         self.myPrint(LOG_DEBUG, 'onBar', '进入onBar.')
         self.myPrint(LOG_DEBUG, 'onBar', bar.__dict__)
 
@@ -357,7 +371,7 @@ class HgStrategy(CtaTemplate):
 
 
         # 只有所有订单全部都是稳定的才继续
-        if not self.is_all_cell_stable(self):
+        if not self.is_all_cell_stable():
             # self.printCells("not self.is_all_cell_stable()")
             self.myPrint(LOG_INFO, 'onBar', "not self.is_all_cell_stable()")
             return
@@ -373,7 +387,7 @@ class HgStrategy(CtaTemplate):
         if self.cell_num >= 1:
             # 更新加仓价格
             cell = self.hgCellList[self.cell_num - 1]  # 取最后一个持仓
-            if cell.is_all_order_stable() and cell.real_unit == cell.target_unit:
+            if cell.is_all_order_stable(self) and cell.real_unit == cell.target_unit:
                 # 订单都稳定了，并且达到了目标持仓，更新加仓价格
                 if cell.open_direction == 'b':
                     self.plan_add_price = cell.real_in_price + (cell.N / 2)
@@ -397,7 +411,7 @@ class HgStrategy(CtaTemplate):
             return
 
         # 单方向是否达到了最大值
-        if self.getInstanceTotalCellNum() >= self.MaxInstanceTotalCellNum:
+        if self.s_or_b and self.getInstanceTotalCellNum() >= self.MaxInstanceTotalCellNum:
             self.myPrint(LOG_INFO, 'onBar', "self.getInstanceTotalCellNum() >= self.MaxInstanceTotalCellNum ,"
                                             "the value is %d / %d " % (
                          self.getInstanceTotalCellNum(), self.MaxInstanceTotalCellNum))
@@ -610,7 +624,7 @@ class HgStrategy(CtaTemplate):
         info = info + self.instanceName + ' ' + self.instanceId + ' '
         if level >= self.logLevel:
             info = info + " %s strategyHg funName = %s ,  data = %s " % (datetime.now(), funName, data)
-            print(info) # 输出在文件中
+            #print(info) # 输出在文件中
             self.writeCtaLog(info) # 输出在数据库中
 
     # 计算真实cell持仓,和 总单位持仓，调用前提是订单已经稳定，订单列表肯定不能为空
@@ -775,19 +789,20 @@ class HgStrategy(CtaTemplate):
                 self.stopTrading()
                 break
 
+
+            tmp_plan_stop_price = None
+            if self.s_or_b == 'b':
+                tmp_plan_stop_price = cell.real_in_price - 2 * cell.N
+            elif self.s_or_b == 's':
+                tmp_plan_stop_price = cell.real_in_price + 2 * cell.N
+
             # 如果处理的是最后一个cell，直接更新
             if last_real_in_price == None:
-                cell.plan_stop_price = cell.real_in_price - 2*cell.N
+                cell.plan_stop_price = tmp_plan_stop_price
+            elif 0.8 < float(last_real_in_price)/cell.real_in_price < 1.2:
+                cell.plan_stop_price = last_plan_stop_price
             else:
-
-                if 0.8 < float(last_real_in_price)/cell.real_in_price < 1.2:
-                    # 差距不大，直接用上一个退出值
-                    cell.plan_stop_price = last_plan_stop_price
-                else:
-                    # 两次买入价格差距大，使用当次买入值计算
-                    cell.plan_stop_price = cell.real_in_price - 2 * cell.N
-
-
+                cell.plan_stop_price = tmp_plan_stop_price
 
             last_real_in_price = cell.real_in_price
             last_plan_stop_price = cell.plan_stop_price

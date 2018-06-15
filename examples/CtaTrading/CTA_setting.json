@@ -1,6 +1,6 @@
 [
     {
-        "name": "hg",
+        "name": "hg01_01",
         "className": "HgStrategy",
         "vtSymbol": "",
         "productID":"rb",
@@ -10,7 +10,105 @@
         "longWindow":55,
         "instanceName":"hg01",
         "instanceId":"hg01_01",
-        "instanceAccount":100000
+        "instanceAccount":200000
+
+    },
+    {
+        "name": "hg01_02",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"zn",
+
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_02",
+        "instanceAccount":200000
+
+    },
+    {
+        "name": "hg01_03",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"SR",
+
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_03",
+        "instanceAccount":200000
+
+    },
+    {
+        "name": "hg01_04",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"CF",
+
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_04",
+        "instanceAccount":200000
+
+    },
+    {
+        "name": "hg01_05",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"a",
+
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_05",
+        "instanceAccount":200000
+
+    },
+    {
+        "name": "hg01_06",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"m",
+
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_06",
+        "instanceAccount":200000
+
+    },
+    {
+        "name": "hg01_07",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"y",
+
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_07",
+        "instanceAccount":200000
+
+    },
+    {
+        "name": "hg01_08",
+        "className": "HgStrategy",
+        "vtSymbol": "",
+        "productID":"c",
+
+        "shortWindow":10,
+        "middleWindow":20,
+        "longWindow":55,
+        "instanceName":"hg01",
+        "instanceId":"hg01_08",
+        "instanceAccount":200000
 
     }
 ]

@@ -5,6 +5,7 @@ from vnpy.trader.vtZcEngine import DbEngine
 from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
                                     STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN,
                                     PRICETYPE_MARKETPRICE)
+from vnpy.trader.vtSendMail import SendEmail
 
 # 自定义日志级别
 LOG_DEBUG = 10
@@ -121,6 +122,9 @@ class Cell(object):
 
         self.myPrint(strategy, LOG_IMPORTANT, 'cell:hand_cell', logInfo)
 
+        self.sendmails(strategy.instanceName + '_' + strategy.instanceId + '_' + self.vtSymbol + ' ' + logInfo)
+
+
         for orderid in orderIdList:
 
             if strategy.sessionID is not None and strategy.frontID is not None:
@@ -206,7 +210,15 @@ class Cell(object):
             self.real_out_price = out_price/out_volume
 
 
+    def sendmails(self,info):
 
+        mailto_list = ['zhice163@163.com']
+        mail = SendEmail('smtp.163.com', 'guosiwei627@163.com', '163zc163')
+        if mail.sendTxtMail(mailto_list, "成交日志", info, 'plain'):
+            print("邮件 发送成功")
+        else:
+            print("邮件 发送失败")
+        del mail
 
 
     def print_self(self):

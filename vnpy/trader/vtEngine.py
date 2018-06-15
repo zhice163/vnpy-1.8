@@ -214,6 +214,7 @@ class MainEngine(object):
                 # 如果启动日志记录，则注册日志事件监听函数
                 if globalSetting['mongoLogging']:
                     self.eventEngine.register(EVENT_LOG, self.dbLogging)
+                    self.eventEngine.register(EVENT_CTA_LOG, self.dbLogging) # addbyzhice增加cta日志的入库
                     
             except ConnectionFailure:
                 self.writeLog(text.DATABASE_CONNECTING_FAILED)
@@ -261,6 +262,7 @@ class MainEngine(object):
     #----------------------------------------------------------------------
     def dbLogging(self, event):
         """向MongoDB中插入日志"""
+
         log = event.dict_['data']
         d = {
             'content': log.logContent,
