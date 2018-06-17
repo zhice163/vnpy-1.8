@@ -15,6 +15,22 @@ from vnpy.trader.vtConstant import  *
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from pymongo import  ASCENDING, DESCENDING
 
+try:
+    import cPickle as pickle  # python 2
+except ImportError as e:
+    import pickle
+
+# 海龟策略用到的一些表名和数据库名
+MAIN_DB_NAME = 'VnTrader_Main_Db'
+TB_HG_MAIN = "TB_HG_MAIN"
+
+
+# 自定义日志级别
+LOG_DEBUG = 10
+LOG_INFO = 20
+LOG_IMPORTANT = 30
+LOG_ERROR = 40
+
 
 ########################################################################
 # add by zhice
@@ -228,6 +244,99 @@ class ctaDbEngine(object):
 
         else:
             return []
+
+# 海龟 策略的数据库封装
+class hgDbEngine(ctaDbEngine):
+
+    # 将海龟一些数据保存在数据库中
+    # 目前在三个地方调用： 每次 onbar onOrder onTrading
+    def saveIntoDB(self, hgStrategy):
+        hgStrategy.myPrint(LOG_DEBUG, 'saveIntoDB', '进入saveIntoDB。')
+        ret_data = {}
+        d = hgStrategy.__dict__
+
+        ret_data['instanceName'] = hgStrategy.instanceName
+        ret_data['instanceId'] = hgStrategy.instanceId
+
+        for key in hgStrategy.pickleItemList:
+            # 对于字典和列表类型的变量，使用pickle进行存储
+            """
+            if isinstance(d[key], dict) or isinstance(d[key], list):
+                pickleData = pickle.dumps(d[key])
+                ret_data[key] = pickleData
+            else:
+                ret_data[key] = d[key]
+            """
+            # 换成全用pick存储的
+            pickleData = pickle.dumps(d[key])
+            ret_data[key] = pickleData
+
+        # 写入数据库
+        flt = {'instanceName': hgStrategy.instanceName, 'instanceId': hgStrategy.instanceId}
+        hgStrategy.myPrint(LOG_DEBUG, 'saveIntoDB', ret_data)
+        self.dbEngine.dbUpdate(MAIN_DB_NAME, TB_HG_MAIN, ret_data, flt, upsert=True)
+
+    # 根据数据库记录恢复数据
+    def recoveryFromDb(self, hgStrategy):
+
+        hgStrategy.myPrint(LOG_DEBUG, 'recoveryFromDb', '进入recoveryFromDb.')
+        flt = {'instanceName': hgStrategy.instanceName, 'instanceId': hgStrategy.instanceId}
+        ret = self.dbEngine.dbQuery(MAIN_DB_NAME, TB_HG_MAIN, flt)
+
+        # 数据库没有查到记录，正常返回
+        if ret is None or ret.count() == 0:
+            hgStrategy.myPrint(LOG_INFO, 'recoveryFromDb', '数据库没有查到记录，正常返回。')
+            return
+
+        if ret.count() == 1:
+
+            theData = ret[0]
+            # TODO 处理key值不存在的异常
+
+            # 进行数据恢复
+            d = hgStrategy.__dict__
+            for key in hgStrategy.pickleItemList:
+                # 对于字典和列表类型的变量，使用pickle进行存储
+                """
+                if isinstance(d[key], dict) or isinstance(d[key], list):
+                    pickleData = pickle.loads(str(theData[key]))
+                    d[key] = pickleData
+                else:
+                    d[key] = theData[key]
+                """
+                pickleData = pickle.loads(str(theData[key]))
+                d[key] = pickleData
+
+            hgStrategy.myPrint(LOG_IMPORTANT, 'recoveryFromDb', '从数据库载入完成。')
+            hgStrategy.printCells("*" * 20 + " in recoveryFromDb")
+        else:
+            hgStrategy.stopTrading()
+            hgStrategy.myPrint(LOG_ERROR, 'recoveryFromDb', '返回多条记录，flt = %s' % (str(flt)))
+
+
+    # 获取一个海龟实例的全部信息
+    def getHgInstanceInfo(self, instanceName, pickleItemList):
+
+        flt = {'instanceName': instanceName}
+        ret = self.dbEngine.dbQuery(MAIN_DB_NAME, TB_HG_MAIN, flt)
+
+        # 数据库没有查到记录，正常返回
+        if ret is None or ret.count() == 0:
+            print('hgDbEngine 数据库中无记录。')
+            return
+
+        for theData in ret:
+
+            # 进行数据恢复
+            d = []
+            for key in pickleItemList:
+                # 对于字典和列表类型的变量，使用pickle进行存储
+                if isinstance(d[key], dict) or isinstance(d[key], list):
+                    pickleData = pickle.loads(str(theData[key]))
+                    d[key] = pickleData
+                else:
+                    d[key] = theData[key]
+
 
 
 

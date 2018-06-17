@@ -688,6 +688,7 @@ class LogEngine(object):
             if not filename:
                 filename = 'vt_' + datetime.now().strftime('%Y%m%d') + '.log'
             filepath = getTempPath(filename)
+
             self.fileHandler = logging.FileHandler(filepath)
             self.fileHandler.setLevel(self.level)
             self.fileHandler.setFormatter(self.formatter)

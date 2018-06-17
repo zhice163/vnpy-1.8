@@ -30,7 +30,7 @@ from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
 from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
                                     STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN,
                                     PRICETYPE_MARKETPRICE)
-from vnpy.trader.vtZcEngine import ctaDbEngine
+from vnpy.trader.vtZcEngine import hgDbEngine
 from vnpy.trader.vtZcObject import mydb, Cell, LOG_IMPORTANT, LOG_ERROR, LOG_DEBUG, LOG_INFO
 
 try:
@@ -94,7 +94,7 @@ class HgStrategy(CtaTemplate):
         self.cacheDays = max(self.longWindow, (2 * self.middleWindow) + 1)
         self.am = ArrayManager(self.cacheDays)
         self.myDb = mydb  # 数据库引擎
-        self.ctadbEngine = ctaDbEngine(mydb)  # cta 数据库操作的一些封装
+        self.hgDbEngine = hgDbEngine(mydb)  # cta 数据库操作的一些封装
         self.monitor = {}  # 合约当天的 10日线高低、20日线高低、55日线和ART信息
         self.contracts = {}  # 最新的合约信息
         self.sessionID = None  # 本地交易
@@ -140,7 +140,7 @@ class HgStrategy(CtaTemplate):
 
 
         # TODO通过pickle进行数据恢复
-        self.recoveryFromDb()
+        self.hgDbEngine.recoveryFromDb(self)
 
         # 加个临时记录，判断 self.health 的状态
         print(type(self.health))
@@ -154,7 +154,7 @@ class HgStrategy(CtaTemplate):
 
 
         # 海龟交易主力合约，配置时 symbol 配置的是品种名称，进行翻译。
-        ret = self.ctadbEngine.getDominantByProductID(self.productID)
+        ret = self.hgDbEngine.getDominantByProductID(self.productID)
 
         if ret is not None and self.vtSymbol != "" and self.vtSymbol != ret:
             self.stopTrading() # 需要进行手工移仓
@@ -175,68 +175,6 @@ class HgStrategy(CtaTemplate):
             self.myPrint(LOG_ERROR, '__init__', '初始化失败。')
 
 
-
-
-    # 将一些数据保存在数据库中
-    # 目前在三个地方调用： 每次 onbar onOrder onTrading
-    def saveIntoDB(self):
-
-        self.myPrint(LOG_DEBUG, 'saveIntoDB', '进入saveIntoDB。')
-        ret_data = {}
-        d = self.__dict__
-
-        ret_data['instanceName'] = self.instanceName
-        ret_data['instanceId'] = self.instanceId
-
-        for key in self.pickleItemList:
-            # 对于字典和列表类型的变量，使用pickle进行存储
-            if isinstance(d[key], dict) or isinstance(d[key], list):
-                pickleData = pickle.dumps(d[key])
-                ret_data[key] = pickleData
-            else:
-                ret_data[key] = d[key]
-        # 写入数据库
-        flt = {'instanceName':self.instanceName, 'instanceId':self.instanceId}
-        self.myPrint(LOG_DEBUG, 'saveIntoDB', ret_data)
-        mydb.dbUpdate(MAIN_DB_NAME, TB_HG_MAIN, ret_data, flt, upsert=True)
-
-    # 根据数据库记录恢复数据
-    def recoveryFromDb(self):
-
-        self.myPrint(LOG_DEBUG, 'recoveryFromDb', '进入recoveryFromDb.')
-        flt = {'instanceName': self.instanceName, 'instanceId': self.instanceId}
-        ret = mydb.dbQuery(MAIN_DB_NAME, TB_HG_MAIN, flt)
-
-        # 数据库没有查到记录，正常返回
-        if ret is None or ret.count() == 0:
-            self.myPrint(LOG_INFO, 'recoveryFromDb', '数据库没有查到记录，正常返回。')
-            return
-
-        if ret.count() == 1:
-
-            theData = ret[0]
-            # TODO 处理key值不存在的异常
-
-            # 进行数据恢复
-            d = self.__dict__
-            for key in self.pickleItemList:
-                # 对于字典和列表类型的变量，使用pickle进行存储
-                if isinstance(d[key], dict) or isinstance(d[key], list):
-                    pickleData = pickle.loads(str(theData[key]))
-                    d[key] = pickleData
-                else:
-                    d[key] = theData[key]
-
-            self.myPrint(LOG_IMPORTANT, 'recoveryFromDb', '从数据库载入完成。')
-
-            self.printCells("*" * 20 + " in recoveryFromDb")
-        else:
-            self.stopTrading()
-            self.myPrint(LOG_ERROR, 'recoveryFromDb', '返回多条记录，flt = %s' % (str(flt)))
-
-
-
-
     def stopTrading(self, info = ""):
         self.myPrint(LOG_ERROR, 'stopTrading', info)
         self.health = False
@@ -247,8 +185,8 @@ class HgStrategy(CtaTemplate):
         self.myPrint(LOG_INFO, 'onInit', '海龟交易法则策略开始初始化。')
 
         # 初始化合约信息
-        self.contracts = self.ctadbEngine.getAllContract()
-        initData = self.ctadbEngine.loadDayBar(self.vtSymbol, self.cacheDays)
+        self.contracts = self.hgDbEngine.getAllContract()
+        initData = self.hgDbEngine.loadDayBar(self.vtSymbol, self.cacheDays)
         if len(initData) != self.cacheDays:
             self.myPrint(LOG_ERROR, 'onInit', u'【ERROR】【hg】%s 合约初始化数据不足，需要长度为%d ,实际长度为 %d' % (self.vtSymbol, self.longWindow, len(initData)))
             self.stopTrading()
@@ -330,6 +268,7 @@ class HgStrategy(CtaTemplate):
         """收到Bar推送（必须由用户继承实现）"""
         # TODO 对涨跌停的处理
         # TODO 异常值的处理
+        # TODO 如果委托了，一直不成交怎么办
         #strategy.trading = False
         #strategy.inited = False
 
@@ -376,7 +315,18 @@ class HgStrategy(CtaTemplate):
             self.myPrint(LOG_INFO, 'onBar', "not self.is_all_cell_stable()")
             return
 
-        # TODO 当前订单都稳定了，进行真实持仓的校验，更新加仓价格，更新减仓价格，并记录在数据库中。
+        # TODO 这里可以优化， hand_cell 和 saveIntoDB 重复了。
+        if not self.is_all_cell_get_target_unit():
+            self.myPrint(LOG_IMPORTANT, 'onBar', "当前订单稳定了，但是 没有达到目标仓位，则继续交易。")
+
+            for hgcell in self.hgCellList:
+                hgcell.hand_cell(self, bar.close)
+
+            # 记录在数据库中
+            self.hgDbEngine.saveIntoDB(self)
+            return
+
+
         if not self.calCellNumAndTotalRealUnit() and len(self.hgCellList) > 0:
             self.myPrint(LOG_ERROR, 'onBar', 'not self.calCellNumAndTotalRealUnit() and len(self.hgCellList) > 0')
             self.stopTrading()
@@ -402,7 +352,7 @@ class HgStrategy(CtaTemplate):
             self.update_plan_stop_price()
 
             # 进行一次数据库写入
-            self.saveIntoDB()
+            self.hgDbEngine.saveIntoDB(self)
 
 
         # 当前持仓大于最大持仓要求
@@ -458,10 +408,10 @@ class HgStrategy(CtaTemplate):
                                                      "vtSymbol = %s, "
                                                      "s_or_b = %s, "
                                                      "unit = %d, "
-                                                     "middleWindowHighBreak = %d, "
+                                                     "middleWindowLowBreak = %d, "
                                                      "type = %s, "
                                                      "atr = %d " % (vtSymbol, self.s_or_b, self.monitor['unit'],
-                                                                    self.monitor['middleWindowHighBreak'],
+                                                                    self.monitor['middleWindowLowBreak'],
                                                                     BREAK_MIDDLEWINDOW, self.monitor['atr']))
                 self.addCell(a_cell)
 
@@ -519,7 +469,7 @@ class HgStrategy(CtaTemplate):
                 hgcell.hand_cell(self, bar.close)
 
             # 记录在数据库中
-            self.saveIntoDB()
+            self.hgDbEngine.saveIntoDB(self)
 
 
 
@@ -528,6 +478,13 @@ class HgStrategy(CtaTemplate):
         ret = True
         for hgcell in self.hgCellList:
             ret = hgcell.is_all_order_stable(self) and ret
+        return ret
+
+    # 判断是否所有cell都达到目标订单了
+    def is_all_cell_get_target_unit(self):
+        ret = True
+        for hgcell in self.hgCellList:
+            ret = (hgcell.target_unit == hgcell.real_unit) and ret
         return ret
 
 
@@ -558,7 +515,7 @@ class HgStrategy(CtaTemplate):
 
 
         # 记录在数据库中
-        self.saveIntoDB()
+        self.hgDbEngine.saveIntoDB(self)
         self.printCells("*" * 20 + " out onorder")
 
 
@@ -593,7 +550,7 @@ class HgStrategy(CtaTemplate):
         for hgcell in self.hgCellList:
             hgcell.print_self()
         # 记录在数据库中
-        self.saveIntoDB()
+        self.hgDbEngine.saveIntoDB(self)
 
         self.printCells("*" * 20 + " out onTrade")
     
@@ -827,6 +784,10 @@ class HgStrategy(CtaTemplate):
 
     def printCells(self,info=""):
         print(info)
+        print("start printsefl")
+        gt200 = {key: value for key, value in self.__dict__.items() if key not in ['contracts']}
+        print(str(gt200).decode('unicode-escape'))
+        print("end printsefl")
         print("start printcells")
         for cell in self.hgCellList:
             cell.print_self()
