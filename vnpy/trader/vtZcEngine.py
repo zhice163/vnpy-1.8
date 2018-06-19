@@ -248,6 +248,8 @@ class ctaDbEngine(object):
 # 海龟 策略的数据库封装
 class hgDbEngine(ctaDbEngine):
 
+
+
     # 将海龟一些数据保存在数据库中
     # 目前在三个地方调用： 每次 onbar onOrder onTrading
     def saveIntoDB(self, hgStrategy):
@@ -258,18 +260,24 @@ class hgDbEngine(ctaDbEngine):
         ret_data['instanceName'] = hgStrategy.instanceName
         ret_data['instanceId'] = hgStrategy.instanceId
 
-        for key in hgStrategy.pickleItemList:
+        for key in hgStrategy.pickleItemDict.keys():
             # 对于字典和列表类型的变量，使用pickle进行存储
+            if hgStrategy.pickleItemDict[key]:
+                pickleData = pickle.dumps(d[key])
+                ret_data[key] = pickleData
+            else:
+                ret_data[key] = d[key]
             """
             if isinstance(d[key], dict) or isinstance(d[key], list):
                 pickleData = pickle.dumps(d[key])
                 ret_data[key] = pickleData
             else:
                 ret_data[key] = d[key]
-            """
+            
             # 换成全用pick存储的
             pickleData = pickle.dumps(d[key])
             ret_data[key] = pickleData
+            """
 
         # 写入数据库
         flt = {'instanceName': hgStrategy.instanceName, 'instanceId': hgStrategy.instanceId}
@@ -295,18 +303,25 @@ class hgDbEngine(ctaDbEngine):
 
             # 进行数据恢复
             d = hgStrategy.__dict__
-            for key in hgStrategy.pickleItemList:
+            for key in hgStrategy.pickleItemDict.keys():
                 # 对于字典和列表类型的变量，使用pickle进行存储
+                if hgStrategy.pickleItemDict[key]:
+                    pickleData = pickle.loads(str(theData[key]))
+                    d[key] = pickleData
+                else:
+                    d[key] = theData[key]
+
                 """
                 if isinstance(d[key], dict) or isinstance(d[key], list):
                     pickleData = pickle.loads(str(theData[key]))
                     d[key] = pickleData
                 else:
                     d[key] = theData[key]
+                
+                if key in theData.keys():
+                    pickleData = pickle.loads(str(theData[key]))
+                    d[key] = pickleData
                 """
-                pickleData = pickle.loads(str(theData[key]))
-                d[key] = pickleData
-
             hgStrategy.myPrint(LOG_IMPORTANT, 'recoveryFromDb', '从数据库载入完成。')
             hgStrategy.printCells("*" * 20 + " in recoveryFromDb")
         else:
@@ -315,27 +330,42 @@ class hgDbEngine(ctaDbEngine):
 
 
     # 获取一个海龟实例的全部信息
-    def getHgInstanceInfo(self, instanceName, pickleItemList):
+    def getHgInstanceInfo(self, instanceName, pickleItemDict):
 
         flt = {'instanceName': instanceName}
-        ret = self.dbEngine.dbQuery(MAIN_DB_NAME, TB_HG_MAIN, flt)
+        dbRet = self.dbEngine.dbQuery(MAIN_DB_NAME, TB_HG_MAIN, flt)
+        ret = [] # 返回值
 
         # 数据库没有查到记录，正常返回
-        if ret is None or ret.count() == 0:
-            print('hgDbEngine 数据库中无记录。')
-            return
+        if dbRet is None or dbRet.count() == 0:
+            print("getHgInstanceInfo dbRet is None or dbRet.count() == 0")
+            return ret
 
-        for theData in ret:
+        for theData in dbRet:
+            d = {}
+            for key in pickleItemDict.keys():
+                if key in theData.keys():
+                    if pickleItemDict[key]:
+                        pickleData = pickle.loads(str(theData[key]))
+                        d[key] = pickleData
+                    else:
+                        d[key] = theData[key]
+            ret.append(d)
 
-            # 进行数据恢复
-            d = []
-            for key in pickleItemList:
-                # 对于字典和列表类型的变量，使用pickle进行存储
-                if isinstance(d[key], dict) or isinstance(d[key], list):
-                    pickleData = pickle.loads(str(theData[key]))
-                    d[key] = pickleData
-                else:
-                    d[key] = theData[key]
+        return ret
+
+    # 获取当前实例s_or_b 方向的总持仓数
+    def getInstanceTotalCellNum(self, instanceName, s_or_b):
+
+        TotalCellNum = 0
+        flt = {'instanceName': instanceName, 's_or_b': s_or_b}
+        dbRet = self.dbEngine.dbQuery(MAIN_DB_NAME, TB_HG_MAIN, flt)
+        for tmp in dbRet:
+            TotalCellNum = TotalCellNum + int(tmp['cell_num'])
+
+
+        print("getInstanceTotalCellNum instanceName:%s %s 方向的总持仓为: %d" % (instanceName, s_or_b, TotalCellNum))
+        return TotalCellNum
 
 
 

@@ -31,7 +31,7 @@ from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
                                     STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN,
                                     PRICETYPE_MARKETPRICE)
 from vnpy.trader.vtZcEngine import hgDbEngine
-from vnpy.trader.vtZcObject import mydb, Cell, LOG_IMPORTANT, LOG_ERROR, LOG_DEBUG, LOG_INFO
+from vnpy.trader.vtZcObject import mydb, Cell, LOG_IMPORTANT, LOG_ERROR, LOG_DEBUG, LOG_INFO, hgReport
 
 try:
     import cPickle as pickle    #python 2
@@ -95,8 +95,9 @@ class HgStrategy(CtaTemplate):
         self.am = ArrayManager(self.cacheDays)
         self.myDb = mydb  # 数据库引擎
         self.hgDbEngine = hgDbEngine(mydb)  # cta 数据库操作的一些封装
+        self.hgReport = hgReport(self.hgDbEngine)
         self.monitor = {}  # 合约当天的 10日线高低、20日线高低、55日线和ART信息
-        self.contracts = {}  # 最新的合约信息
+        self.contracts = self.hgDbEngine.getAllContract()  # 最新的合约信息
         self.sessionID = None  # 本地交易
         self.frontID = None  # 本次交易的
         self.logLevel = LOG_INFO # 设置日志输出级别
@@ -104,6 +105,7 @@ class HgStrategy(CtaTemplate):
 
 
         # 【重要】所有要pickle存储的数据都要记录在变量中
+        """
         self.pickleItemList = ["orderList",
                                "tradeList",
                                "hgCellList",
@@ -117,7 +119,26 @@ class HgStrategy(CtaTemplate):
                                "health",
                                "MaxInstanceTotalCellNum",
                                "totalRealUnit",
-                               "vtSymbol"]
+                               "vtSymbol",
+                               "symbolName"]
+        """
+        # 【重要】所有要pickle存储的数据都要记录在变量中
+        #  True 代表用pickle存储，False代表用正常方式存储
+        self.pickleItemDict = {"orderList": True,
+                               "tradeList": True,
+                               "hgCellList": True,
+                               "plan_add_price": False,
+                               "atr": False,
+                               "cell_num": False,
+                               "s_or_b": False,
+                               "offsetProfit": False,
+                               "floatProfit": False,
+                               "max_cell_num": False,
+                               "health": False,
+                               "MaxInstanceTotalCellNum": False,
+                               "totalRealUnit": False,
+                               "vtSymbol": False,
+                               "symbolName": False}
 
         # 每次启动要用pickle恢复的数据
         #self.hgPosition = {} # 持仓信息
@@ -135,16 +156,18 @@ class HgStrategy(CtaTemplate):
         self.MaxInstanceTotalCellNum = 12 # 相同实例下单方向的总持仓上限
         self.totalRealUnit = 0 # 真实总持仓
         self.vtSymbol = ''
+        self.symbolName = '' # 合约中文名字
 
 
-
-
+        fileProductID = self.productID
         # TODO通过pickle进行数据恢复
         self.hgDbEngine.recoveryFromDb(self)
 
-        # 加个临时记录，判断 self.health 的状态
-        print(type(self.health))
-        print(self.health)
+        if fileProductID <> self.productID:
+            self.stopTrading()  # 需要进行手工移仓
+            self.myPrint(LOG_ERROR, '__init__', '文件与数据库中productID不一致，停止交易。')
+
+
 
         # 更新hgCellList 每个cell的策略引用 ,cell 已去除 strategy
         # 原因是：hgCellList 是从数据库中恢复的，里面的引用有可能已经失效，所以更新为最新的
@@ -169,6 +192,13 @@ class HgStrategy(CtaTemplate):
             self.stopTrading()
             self.myPrint(LOG_ERROR, '__init__', '获取主力合约失败。')
 
+        self.symbolName = self.contracts[self.vtSymbol]['name'] # 获取合约中文名字
+
+        # 只在第一个实例中发送报告
+        if self.instanceId.endswith('_01'):
+            self.myPrint(LOG_INFO, 'onInit', '发送报告: ' + self.instanceName)
+            self.hgReport.sendReport(self.instanceName, self.pickleItemDict)
+
         if self.health:
             self.myPrint(LOG_INFO, '__init__', '初始化完成。')
         else:
@@ -185,7 +215,7 @@ class HgStrategy(CtaTemplate):
         self.myPrint(LOG_INFO, 'onInit', '海龟交易法则策略开始初始化。')
 
         # 初始化合约信息
-        self.contracts = self.hgDbEngine.getAllContract()
+        #self.contracts = self.hgDbEngine.getAllContract()
         initData = self.hgDbEngine.loadDayBar(self.vtSymbol, self.cacheDays)
         if len(initData) != self.cacheDays:
             self.myPrint(LOG_ERROR, 'onInit', u'【ERROR】【hg】%s 合约初始化数据不足，需要长度为%d ,实际长度为 %d' % (self.vtSymbol, self.longWindow, len(initData)))
@@ -242,6 +272,13 @@ class HgStrategy(CtaTemplate):
         self.myPrint(LOG_INFO, 'onInit', u'初始化，sessionID = %s; frontID = %s' % (self.sessionID, self.frontID))
         self.myPrint(LOG_INFO, 'onInit', '海龟交易法则策略初始化完成。')
         # TODO 每次重新登录如果有历史报单，对历史报单的处理
+
+
+
+
+
+        #self.myPrint(LOG_INFO, 'onInit', '未测试，先关闭真正的交易。')
+        #self.stopTrading()
         #gateway.tdApi.qryTest()
 
         
@@ -361,10 +398,11 @@ class HgStrategy(CtaTemplate):
             return
 
         # 单方向是否达到了最大值
-        if self.s_or_b and self.getInstanceTotalCellNum() >= self.MaxInstanceTotalCellNum:
-            self.myPrint(LOG_INFO, 'onBar', "self.getInstanceTotalCellNum() >= self.MaxInstanceTotalCellNum ,"
+        tmpInstanceTotalCellNum = self.hgDbEngine.getInstanceTotalCellNum(self.instanceName, self.s_or_b)
+        if self.s_or_b and tmpInstanceTotalCellNum >= self.MaxInstanceTotalCellNum:
+            self.myPrint(LOG_INFO, 'onBar', "tmpInstanceTotalCellNum >= self.MaxInstanceTotalCellNum ,"
                                             "the value is %d / %d " % (
-                         self.getInstanceTotalCellNum(), self.MaxInstanceTotalCellNum))
+                tmpInstanceTotalCellNum, self.MaxInstanceTotalCellNum))
             return
 
 
@@ -552,6 +590,10 @@ class HgStrategy(CtaTemplate):
         # 记录在数据库中
         self.hgDbEngine.saveIntoDB(self)
 
+        # TODO 发送下报告，这里报告中有些字段还没更新，其实不是最佳时机
+        self.myPrint(LOG_INFO, 'onTrade', '发送报告: ' + self.instanceName)
+        self.hgReport.sendReport(self.instanceName, self.pickleItemDict)
+
         self.printCells("*" * 20 + " out onTrade")
     
     #----------------------------------------------------------------------
@@ -635,10 +677,11 @@ class HgStrategy(CtaTemplate):
             return
 
         # 单方向是否达到了最大值
-        if self.getInstanceTotalCellNum() >= self.MaxInstanceTotalCellNum:
-            self.myPrint(LOG_IMPORTANT, 'addCell', "self.getInstanceTotalCellNum() >= self.MaxInstanceTotalCellNum ,"
+        tmpInstanceTotalCellNum = self.hgDbEngine.getInstanceTotalCellNum(self.instanceName, self.s_or_b)
+        if tmpInstanceTotalCellNum >= self.MaxInstanceTotalCellNum:
+            self.myPrint(LOG_IMPORTANT, 'addCell', "tmpInstanceTotalCellNum >= self.MaxInstanceTotalCellNum ,"
                                             "the value is %d / %d " % (
-                             self.getInstanceTotalCellNum(), self.MaxInstanceTotalCellNum))
+                tmpInstanceTotalCellNum, self.MaxInstanceTotalCellNum))
             return
 
         self.cell_num = self.cell_num + 1 # 持仓计数加1
@@ -765,6 +808,7 @@ class HgStrategy(CtaTemplate):
             last_plan_stop_price = cell.plan_stop_price
 
     # 获取当前实例s_or_b 方向的总持仓数
+    """
     def getInstanceTotalCellNum(self):
 
         TotalCellNum = 0
@@ -780,20 +824,18 @@ class HgStrategy(CtaTemplate):
 
         print("instanceName:%s %s 方向的总持仓为: %d" % (self.instanceName, self.s_or_b, TotalCellNum))
         return TotalCellNum
-
+    """
 
     def printCells(self,info=""):
         print(info)
         print("start printsefl")
-        gt200 = {key: value for key, value in self.__dict__.items() if key not in ['contracts']}
+        gt200 = {key: value for key, value in self.__dict__.items() if key not in ['contracts','orderList','tradeList','hgCellList']}
         print(str(gt200).decode('unicode-escape'))
         print("end printsefl")
         print("start printcells")
         for cell in self.hgCellList:
             cell.print_self()
         print("end printcells")
-
-
 
 
 

@@ -6,6 +6,7 @@ from vnpy.trader.vtConstant import (DIRECTION_LONG, DIRECTION_SHORT,
                                     STATUS_NOTTRADED, STATUS_PARTTRADED, STATUS_UNKNOWN,
                                     PRICETYPE_MARKETPRICE)
 from vnpy.trader.vtSendMail import SendEmail
+import pandas as pd
 
 # 自定义日志级别
 LOG_DEBUG = 10
@@ -251,6 +252,121 @@ class Cell(object):
             print("     " + str(_key) + " : " + info)
         print(" ****************** cell 详情结束 *******************")
 
+# 用来生成报表的对象
+class hgReport(object):
+
+    # 行信息
+    class lineInfo(object):
+
+        def __init__(self):
+
+            # 与 pickleItemDict 名称一致就会出现在报告中
+            # cell 中 cell + 属性名 与下面一致就会出现在报告中
+            self.symbolName = ''  # 品种
+            self.vtSymbol = ''  # 核对完毕，合约
+            self.s_or_b = ''  # 核对完毕，方向
+            self.cell_num = ''  # 核对完毕，持仓海龟单位
+            self.totalRealUnit = ''  # 核对完毕，持仓手数
+            self.totalAvgInPrince = ''  # 总平均入场价格
+            self.inCondition = ''  # 入场条件
+            self.atr = ''  # 核对完毕，ATR
+            self.unit = ''  # 单位海龟对应的手数
+            self.plan_add_price = ''  # 核对完毕，当前加仓价格
+            self.offsetProfit = ''  # 核对完毕，实际盈亏
+            self.floatProfit = ''  # 核对完毕，浮动盈亏
+            self.health = None  # 核对完毕，是否健康
+            self.cell_vtSymbol = ''  # 核对完毕，cell vtSymbol
+            self.cell_open_direction = ''  # 核对完毕，买卖方向
+            self.cell_in_condition = ''  # 核对完毕，入场条件 1:20日突破 2:55日突破 3:0.5N 4:移仓
+            self.cell_target_unit = ''  # 核对完毕，cell目标持仓
+            self.cell_real_unit = ''  # 核对完毕，cell真实持仓
+            self.cell_plan_in_price = ''  # 核对完毕，cell计划入场价格
+            self.cell_real_in_price = ''  # 核对完毕，cell实际入场价格
+            self.cell_in_time = ''  # 核对完毕，cell入场时间
+            self.cell_plan_stop_price = ''  # 核对完毕，cell计划离场价格
+            self.cell_real_out_price = ''  # 核对完毕，cell真实离场价格
+            self.cellOutCondition = ''  # cell出场条件
+
+
+
+    def __init__(self, hgDbEngine):
+        self.hgDbEngine = hgDbEngine
+
+    # 生成报告
+    def getDataFromDb(self, instanceName, pickleItemDict):
+
+        hgDbData = self.hgDbEngine.getHgInstanceInfo(instanceName, pickleItemDict)
+        ret = []
+        for _data in hgDbData:
+            # 生成第一行数据
+            line1 = self.lineInfo()
+            for item in pickleItemDict.keys():
+                if item in line1.__dict__.keys() and item in _data.keys():
+                    line1.__dict__[item] = _data[item]
+            ret.append(line1.__dict__)
+            # 生成其他行,具体cell
+            for _cell in _data['hgCellList']:
+                cellLine = self.lineInfo()
+                for key in _cell.__dict__.keys():
+                    if ("cell_" + str(key)) in cellLine.__dict__.keys():
+                        cellLine.__dict__["cell_" + str(key)] = _cell.__dict__[key]
+                ret.append(cellLine.__dict__)
+
+        return ret
+
+    def genHtml(self, info):
+
+        columns = ['symbolName',
+                    'vtSymbol',
+                    's_or_b',
+                    'cell_num',
+                    'totalRealUnit',
+                    'totalAvgInPrince',
+                    'inCondition',
+                    'atr',
+                    'unit',
+                    'plan_add_price',
+                    'offsetProfit',
+                    'floatProfit',
+                    'health',
+                    'cell_vtSymbol',
+                    'cell_open_direction',
+                    'cell_in_condition',
+                    'cell_target_unit',
+                    'cell_real_unit',
+                    'cell_plan_in_price',
+                    'cell_real_in_price',
+                    'cell_in_time',
+                    'cell_plan_stop_price',
+                    'cell_real_out_price',
+                    'cellOutCondition']
+        df = pd.DataFrame(info, columns=columns)
+        df_html = df.to_html()
+
+        return df_html
+
+    def sendReport(self, instanceName, pickleItemDict):
+
+        info = self.getDataFromDb(instanceName, pickleItemDict)
+        html_info = self.genHtml(info)
+
+        mailto_list = ['zhice163@163.com']
+        mail = SendEmail('smtp.163.com', 'guosiwei627@163.com', '163zc163')
+        if mail.sendTxtMail(mailto_list, "海龟 " + instanceName + ' 报告', html_info, 'html'):
+            print("邮件 发送成功")
+        else:
+            print("邮件 发送失败")
+        del mail
+
+        return info
+
+
+
+
+
+
+
+
 
 
 """
@@ -269,3 +385,5 @@ for tmp in ret:
 print(num)
 mydb.dbClose()
 """
+
+
