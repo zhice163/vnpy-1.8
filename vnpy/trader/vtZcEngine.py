@@ -267,17 +267,6 @@ class hgDbEngine(ctaDbEngine):
                 ret_data[key] = pickleData
             else:
                 ret_data[key] = d[key]
-            """
-            if isinstance(d[key], dict) or isinstance(d[key], list):
-                pickleData = pickle.dumps(d[key])
-                ret_data[key] = pickleData
-            else:
-                ret_data[key] = d[key]
-            
-            # 换成全用pick存储的
-            pickleData = pickle.dumps(d[key])
-            ret_data[key] = pickleData
-            """
 
         # 写入数据库
         flt = {'instanceName': hgStrategy.instanceName, 'instanceId': hgStrategy.instanceId}

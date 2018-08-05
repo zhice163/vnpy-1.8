@@ -199,5 +199,15 @@ def downloadAllDayBar(num):
     print '-' * 50
     print info
     return info
-#downloadAllDayBar(5)
-#update_dominant_contract()
+
+if __name__ == '__main__':
+
+    print("zcDataService start")
+    if len(sys.argv) == 2:
+        if sys.argv[1] == 'down':
+            print("start downloadAllDayBar")
+            downloadAllDayBar(55)
+        if sys.argv[1] == 'update':
+            print("start update_dominant_contract")
+            update_dominant_contract()
+

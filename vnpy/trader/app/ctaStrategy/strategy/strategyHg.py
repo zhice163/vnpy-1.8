@@ -18,6 +18,8 @@
 3、松散关联的多个市场10个头寸
 4、单个方向（多头或空头）12个头寸
 
+# 夜盘属于第二天
+
 """
 
 from __future__ import division
@@ -39,6 +41,11 @@ except ImportError as e:
     import pickle
 
 
+import numpy as np
+from vnpy.trader.zcFuns import genHtmls, saveImg
+
+import os
+
 BREAK_MIDDLEWINDOW = '20日突破'
 HALF_N = '0.5N'
 
@@ -53,7 +60,7 @@ TB_HG_MAIN = "TB_HG_MAIN"
 ########################################################################
 # 每个实例监控一个品种，通过数据库进行一个交易实例的组合，一个交易实例包含多个品种的交易
 class HgStrategy(CtaTemplate):
-    """双指数均线策略Demo"""
+    """Demo"""
     className = 'haigui'
     author = u'zhice'
     priceTpye = PRICETYPE_MARKETPRICE # 设置为市价单
@@ -87,7 +94,7 @@ class HgStrategy(CtaTemplate):
         """Constructor"""
         super(HgStrategy, self).__init__(ctaEngine, setting)
 
-        self.GOON = True
+        self.GOON = False
 
         # 每次启动要重建的参数
         self.bg = BarGenerator(self.onBar)
@@ -101,27 +108,18 @@ class HgStrategy(CtaTemplate):
         self.sessionID = None  # 本地交易
         self.frontID = None  # 本次交易的
         self.logLevel = LOG_INFO # 设置日志输出级别
+        self.bGenImg = True # 是否生成图像标志位
         # self.sessionid = uuid.uuid1() # 本次唯一id
 
+        # 关于生成图片与展示html的两个关键变量
+        self.imgHtmlRootDir = ''  # 图片和展示html的根路径
+        if os.path.exists('/home/ubuntu/vnpy/vnpy-1.8/'):
+            self.imgHtmlRootDir = '/home/ubuntu/'
+            print('sys.path.append - /home/ubuntu/vnpy/vnpy-1.8/')
+        elif os.path.exists('/srv/vnpy18'):
+            self.imgHtmlRootDir = '/srv/img_html/'
+            print('sys.path.append - /srv/vnpy18')
 
-        # 【重要】所有要pickle存储的数据都要记录在变量中
-        """
-        self.pickleItemList = ["orderList",
-                               "tradeList",
-                               "hgCellList",
-                               "plan_add_price",
-                               "atr",
-                               "cell_num",
-                               "s_or_b",
-                               "offsetProfit",
-                               "floatProfit",
-                               "max_cell_num",
-                               "health",
-                               "MaxInstanceTotalCellNum",
-                               "totalRealUnit",
-                               "vtSymbol",
-                               "symbolName"]
-        """
         # 【重要】所有要pickle存储的数据都要记录在变量中
         #  True 代表用pickle存储，False代表用正常方式存储
         self.pickleItemDict = {"orderList": True,
@@ -163,27 +161,21 @@ class HgStrategy(CtaTemplate):
         # TODO通过pickle进行数据恢复
         self.hgDbEngine.recoveryFromDb(self)
 
+        # 数据库恢复的 productID 与 配置文件中的不一致，属于异常情况，停止交易
         if fileProductID <> self.productID:
-            self.stopTrading()  # 需要进行手工移仓
+            self.stopTrading()
             self.myPrint(LOG_ERROR, '__init__', '文件与数据库中productID不一致，停止交易。')
-
-
-
-        # 更新hgCellList 每个cell的策略引用 ,cell 已去除 strategy
-        # 原因是：hgCellList 是从数据库中恢复的，里面的引用有可能已经失效，所以更新为最新的
-
-        #for hgcell in self.hgCellList:
-            #hgcell.strategy = self
 
 
         # 海龟交易主力合约，配置时 symbol 配置的是品种名称，进行翻译。
         ret = self.hgDbEngine.getDominantByProductID(self.productID)
 
+        # 判断是否需要进行手工移仓
+        # TODO 目前出现移仓情况需要手动处理
         if ret is not None and self.vtSymbol != "" and self.vtSymbol != ret:
             self.stopTrading() # 需要进行手工移仓
             self.myPrint(LOG_ERROR, '__init__', '需要进行手工移仓。')
 
-            # TODO 目前出现移仓情况需要手动处理
 
         if ret is not None and self.vtSymbol == "" :
             self.vtSymbol = ret
@@ -274,14 +266,54 @@ class HgStrategy(CtaTemplate):
         # TODO 每次重新登录如果有历史报单，对历史报单的处理
 
 
-
-
+        # 前几个函数测试使用
+        self.health = False
 
         #self.myPrint(LOG_INFO, 'onInit', '未测试，先关闭真正的交易。')
         #self.stopTrading()
         #gateway.tdApi.qryTest()
 
-        
+    # ----------------------------------------------------------------------
+    # 生成图像的封装函数
+    def genImg(self, size, closePrice):
+        # 每月的图片放在一个文件夹
+        # 文件用时间命名
+        strTime = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+        strMonth = strTime[0:6]
+        filePath = self.imgHtmlRootDir + 'img/' + strMonth
+        if not os.path.exists(filePath):
+            os.makedirs(filePath)
+        fileNamePath = filePath + '/' + strTime + '.jpg'
+        title = self.vtSymbol + " " + strTime
+
+        s_h, s_l = self.am.donchian(self.shortWindow, array=True)
+        m_h, m_l = self.am.donchian(self.middleWindow, array=True)
+        l_h, l_l = self.am.donchian(self.longWindow, array=True)
+
+        s_h = s_h[-size:]
+        s_l = s_l[-size:]
+        m_h = m_h[-size:]
+        m_l = m_l[-size:]
+        l_h = l_h[-size:]
+        l_l = l_l[-size:]
+        close = self.am.close[-size:]
+
+        s_h = np.hstack((s_h, s_h[-1]))
+        s_l = np.hstack((s_l, s_l[-1]))
+        m_h = np.hstack((m_h, m_h[-1]))
+        m_l = np.hstack((m_l, m_l[-1]))
+        l_h = np.hstack((l_h, l_h[-1]))
+        l_l = np.hstack((l_l, l_l[-1]))
+        close = np.hstack((close, closePrice))
+
+
+        saveImg(self,fileNamePath, title,s_h, s_l, m_h, m_l, l_h, l_l, close, size+1)
+
+
+
+    # ----------------------------------------------------------------------
+
+
     #----------------------------------------------------------------------
     def onStart(self):
         """启动策略（必须由用户继承实现）"""
@@ -315,6 +347,8 @@ class HgStrategy(CtaTemplate):
         self.myPrint(LOG_DEBUG, 'onBar', '进入onBar.')
         self.myPrint(LOG_DEBUG, 'onBar', bar.__dict__)
 
+
+
         if not self.trading :
             self.myPrint(LOG_INFO, 'onBar', 'self.trading is false')
             return
@@ -323,6 +357,13 @@ class HgStrategy(CtaTemplate):
             self.myPrint(LOG_ERROR, 'onBar', 'self.health is false')
             return
 
+        # 是否生成图像处理
+        if self.bGenImg:
+            # 生成图像
+            self.genImg(20, bar.close)
+            # 生成展示html
+            genHtmls(self.imgHtmlRootDir)
+            self.bGenImg = False
 
 
         #self.buy(3750, 1)
@@ -341,18 +382,19 @@ class HgStrategy(CtaTemplate):
 
         # 账户金额有限，如果加仓单位还不到1，则直接返回
         if self.monitor['unit'] == 0:
-            self.myPrint(LOG_INFO, 'onBar', u'self.monitor[unit] == 0')
+            self.myPrint(LOG_ERROR, 'onBar', u'self.monitor[unit] == 0')
             return
 
 
 
-        # 只有所有订单全部都是稳定的才继续
+        # 5、如果存在不问稳定的订单状态直接返回
         if not self.is_all_cell_stable():
             # self.printCells("not self.is_all_cell_stable()")
             self.myPrint(LOG_INFO, 'onBar', "not self.is_all_cell_stable()")
             return
 
         # TODO 这里可以优化， hand_cell 和 saveIntoDB 重复了。
+        # 6、如果真实持仓未达到目标状态，下单，更新数据库，并返回
         if not self.is_all_cell_get_target_unit():
             self.myPrint(LOG_IMPORTANT, 'onBar', "当前订单稳定了，但是 没有达到目标仓位，则继续交易。")
 
@@ -404,9 +446,6 @@ class HgStrategy(CtaTemplate):
                                             "the value is %d / %d " % (
                 tmpInstanceTotalCellNum, self.MaxInstanceTotalCellNum))
             return
-
-
-
 
 
         # TODO 当前持仓是否满足 6 规则
@@ -828,7 +867,7 @@ class HgStrategy(CtaTemplate):
 
     def printCells(self,info=""):
         print(info)
-        print("start printsefl")
+        print("start printself")
         gt200 = {key: value for key, value in self.__dict__.items() if key not in ['contracts','orderList','tradeList','hgCellList']}
         print(str(gt200).decode('unicode-escape'))
         print("end printsefl")
