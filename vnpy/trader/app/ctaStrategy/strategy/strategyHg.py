@@ -267,7 +267,7 @@ class HgStrategy(CtaTemplate):
 
 
         # 前几个函数测试使用
-        self.health = False
+        #self.health = False
 
         #self.myPrint(LOG_INFO, 'onInit', '未测试，先关闭真正的交易。')
         #self.stopTrading()
